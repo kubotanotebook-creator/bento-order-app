@@ -41,6 +41,8 @@ h2 { font-size: 1.1rem; margin: 0; }
 h3 { font-size: 1rem; margin: 12px 0 6px; }
 
 .muted { color: #888; font-size: 0.9rem; }
+.notice-list { margin: 0; padding-left: 1.2em; }
+.notice-list li { margin-bottom: 4px; }
 
 .date-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 

@@ -165,7 +165,7 @@
 
 <div class="card">
   <h1>当日分の代理注文(締切後の追加用)</h1>
-  <p class="muted">締切後、社員・パートさんが当日のお昼(12:00)までに松浦さんか陽介さんへメモで「今日分お願いします」と伝えてきたときに、ここから代わりに登録できます。締切に関係なく登録できます。</p>
+  <p class="muted">締切後、社員・パートさんが当日9:00までに松浦さんか陽介さんへメモで「今日分お願いします」と伝えてきたときに、ここから代わりに登録できます。締切に関係なく登録できます。</p>
   <form method="post" action="{{ url_for('admin_proxy_add_order') }}" class="grid-form">
     <label>日付<input type="date" name="order_date" value="{{ today }}" required></label>
     <label>氏名

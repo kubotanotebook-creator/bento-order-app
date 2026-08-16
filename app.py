@@ -276,7 +276,7 @@ def order_week():
     settings = get_settings()
 
     if not week_is_open(db, monday, settings):
-        flash("この週の注文受付は終了しています。当日分の追加・変更をご希望の場合は、当日のお昼(12:00)までに松浦さんか陽介さんまでメモでお伝えください。", "error")
+        flash("この週の注文受付は終了しています。当日分の追加・変更をご希望の場合は、当日9:00までに松浦さんか陽介さんまでメモでお伝えください。", "error")
         return redirect(url_for("index"))
 
     for i in range(5):
@@ -370,7 +370,7 @@ def cancel_order():
             db.commit()
             flash("注文をキャンセルしました。", "success")
         else:
-            flash("この週の注文受付は終了しているため、キャンセルできません。休みなどでキャンセルしたい場合は、当日のお昼(12:00)までに松浦さんか陽介さんまでメモでお伝えください。", "error")
+            flash("この週の注文受付は終了しているため、キャンセルできません。休みなどでキャンセルしたい場合は、当日9:00までに松浦さんか陽介さんまでメモでお伝えください。", "error")
     else:
         flash("この注文はキャンセルできません。", "error")
     return redirect(url_for("my_orders"))
