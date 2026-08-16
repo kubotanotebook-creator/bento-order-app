@@ -159,7 +159,12 @@ def index():
 
     employee_name = session.get("employee_name")
     if not employee_name:
-        return render_template("login.html")
+        db = get_db()
+        known_employees = [
+            r["employee_name"]
+            for r in db.execute("SELECT DISTINCT employee_name FROM orders ORDER BY employee_name").fetchall()
+        ]
+        return render_template("login.html", known_employees=known_employees)
 
     db = get_db()
     settings = get_settings()

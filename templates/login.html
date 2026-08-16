@@ -3,11 +3,24 @@
 {% block content %}
 <div class="card narrow">
   <h1>お名前を入力してください</h1>
-  <form method="post" action="{{ url_for('index') }}">
+  <form method="post" action="{{ url_for('index') }}" id="login-form">
     <label>氏名</label>
-    <input type="text" name="employee_name" placeholder="例: 山田 太郎" required autofocus>
+    <input type="text" name="employee_name" id="employee_name_input" list="employee-list" placeholder="例: 山田 太郎" required autofocus>
+    <datalist id="employee-list">
+      {% for name in known_employees %}<option value="{{ name }}">{% endfor %}
+    </datalist>
     <button type="submit" class="btn primary">はじめる</button>
   </form>
-  <p class="muted">※簡易ログインです。同じ名前で毎回入力してください。</p>
+  <p class="muted">※簡易ログインです。同じ名前で毎回入力してください(このブラウザでは前回の名前を自動で入力しています)。</p>
 </div>
+<script>
+(function () {
+  var input = document.getElementById('employee_name_input');
+  var last = localStorage.getItem('bento_employee_name');
+  if (last) { input.value = last; }
+  document.getElementById('login-form').addEventListener('submit', function () {
+    localStorage.setItem('bento_employee_name', input.value.trim());
+  });
+})();
+</script>
 {% endblock %}
