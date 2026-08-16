@@ -1,0 +1,246 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  background: #f5f6f8;
+  color: #24292f;
+}
+.topbar {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e4e8;
+}
+.topbar-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.brand { font-weight: 700; font-size: 1.1rem; color: #d9480f; text-decoration: none; }
+nav { display: flex; gap: 14px; align-items: center; font-size: 0.9rem; }
+nav a { color: #444; text-decoration: none; }
+nav a:hover { text-decoration: underline; }
+.who { color: #888; }
+
+.container { max-width: 900px; margin: 20px auto; padding: 0 20px 60px; }
+
+.card {
+  background: #fff;
+  border: 1px solid #e2e4e8;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+.card.narrow { max-width: 400px; margin: 60px auto; }
+
+h1 { font-size: 1.3rem; margin: 0 0 10px; }
+h2 { font-size: 1.1rem; margin: 0; }
+h3 { font-size: 1rem; margin: 12px 0 6px; }
+
+.muted { color: #888; font-size: 0.9rem; }
+
+.date-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+
+.badge { padding: 3px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+.badge.open { background: #e6f4ea; color: #1a7f37; }
+.badge.closed { background: #fbe9e7; color: #c62828; }
+
+.notice { background: #fff8e1; border: 1px solid #ffe082; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; }
+
+.menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.menu-item { border: 1px solid #e2e4e8; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+.menu-item-name { font-weight: 700; }
+.menu-item-desc { font-size: 0.85rem; color: #666; min-height: 1.2em; }
+.menu-item-price { font-weight: 700; color: #d9480f; margin-bottom: 6px; }
+
+.btn {
+  border: none; border-radius: 6px; padding: 9px 14px; font-size: 0.9rem;
+  cursor: pointer; background: #eee; color: #333;
+}
+.btn.primary { background: #d9480f; color: #fff; }
+.btn.primary:disabled { background: #ccc; cursor: not-allowed; }
+.btn.small { padding: 5px 10px; font-size: 0.8rem; }
+.btn.ok { background: #1a7f37; color: #fff; }
+
+form label { display: block; font-size: 0.85rem; margin-bottom: 4px; color: #555; }
+input[type=text], input[type=password], input[type=number], input[type=date], input[type=time] {
+  width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 12px; font-size: 0.95rem;
+}
+.inline-form { display: flex; align-items: end; gap: 12px; }
+.inline-form input { margin-bottom: 0; width: auto; }
+.grid-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; align-items: end; }
+.grid-form label input { margin-bottom: 0; }
+
+.table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table { width: 100%; min-width: 460px; border-collapse: collapse; font-size: 0.9rem; }
+.table th, .table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; white-space: nowrap; }
+.table th { color: #666; font-weight: 600; }
+
+@media (max-width: 480px) {
+  .container { padding: 0 12px 60px; }
+  .card { padding: 14px; }
+  .topbar-inner { padding: 12px 14px; }
+  nav { gap: 10px; font-size: 0.85rem; }
+  .summary-row { gap: 16px; }
+  .stat-value { font-size: 1.2rem; }
+  .inline-form { flex-wrap: wrap; }
+  /* Single column on narrow screens so long dish-name text fields (e.g. the
+     PDF import review form) stay fully readable instead of getting cramped
+     into a 2-column grid. */
+  .grid-form { grid-template-columns: 1fr; }
+}
+
+/* Stacked "card" layout for tables on narrow screens, so action buttons
+   are never hidden off-screen behind horizontal scroll. */
+@media (max-width: 600px) {
+  .table-scroll { overflow-x: visible; }
+  .table { min-width: 0; }
+  .table thead { display: none; }
+  .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
+  .table tr {
+    border: 1px solid #e2e4e8;
+    border-radius: 8px;
+    padding: 4px 12px;
+    margin-bottom: 10px;
+  }
+  .table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid #f2f2f2;
+    white-space: normal;
+    text-align: right;
+  }
+  .table td:last-child { border-bottom: none; }
+  .table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #666;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .table td:empty::before { content: none; }
+  .table td[data-label=""]{ justify-content: flex-end; }
+}
+
+.week-card .day-row {
+  padding: 12px 0;
+  border-bottom: 1px solid #eee;
+}
+.week-card .day-row:last-child { border-bottom: none; }
+.day-title { font-weight: 700; margin-bottom: 8px; }
+.day-choices { display: flex; gap: 8px; flex-wrap: wrap; }
+.day-choices label {
+  border: 1px solid #ccc;
+  border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+}
+.day-choices input[type=radio] { margin: 0; }
+.day-choices label:has(input:checked) {
+  background: #fff3e9;
+  border-color: #d9480f;
+  color: #d9480f;
+  font-weight: 700;
+}
+
+/* Weekly at-a-glance strip — mimics the paper board's "one row of circles
+   per week" so employees can see their whole week's choices in one look. */
+.week-glance {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding-bottom: 4px;
+}
+.glance-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  border-radius: 8px;
+  padding: 8px 2px;
+}
+.glance-cell.is-today { background: #fff8ec; }
+.glance-day { font-size: 0.75rem; color: #888; font-weight: 700; }
+.glance-date { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
+.glance-dot {
+  width: 34px;
+  height: 34px;
+  line-height: 34px;
+  border-radius: 50%;
+  margin: 0 auto 4px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+.glance-dot.fry { background: #d9480f; }
+.glance-dot.nofry { background: #7048e8; }
+.glance-dot.veg { background: #2f9e44; }
+.glance-dot.none {
+  background: transparent;
+  border: 2px dashed #ccc;
+  color: #bbb;
+  line-height: 30px;
+}
+.glance-cat { font-size: 0.7rem; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 480px) {
+  .glance-dot { width: 28px; height: 28px; line-height: 28px; font-size: 0.85rem; }
+  .glance-dot.none { line-height: 24px; }
+  .glance-cat { font-size: 0.62rem; }
+}
+
+.glance-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 10px;
+  font-size: 0.8rem;
+  color: #555;
+}
+.glance-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend-dot {
+  width: 20px !important;
+  height: 20px !important;
+  line-height: 20px !important;
+  font-size: 0.7rem !important;
+  margin: 0 !important;
+  display: inline-block;
+}
+.legend-dot.none { line-height: 16px !important; }
+
+.quick-status { border-color: #d9d9d9; }
+.quick-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+.quick-status-row:last-child { margin-bottom: 0; }
+.quick-status-row.ok { background: #e6f4ea; color: #1a5c2a; }
+.quick-status-row.warn { background: #fff4e5; color: #8a5200; }
+.quick-status-label { font-weight: 700; }
+
+.summary-row { display: flex; gap: 24px; margin: 10px 0; }
+.stat { display: flex; flex-direction: column; }
+.stat-label { font-size: 0.8rem; color: #888; }
+.stat-value { font-size: 1.4rem; font-weight: 700; }
+
+.summary-block { border-top: 1px dashed #e2e4e8; padding-top: 10px; margin-top: 10px; }
+
+.flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 0.9rem; }
+.flash-success { background: #e6f4ea; color: #1a7f37; }
+.flash-error { background: #fbe9e7; color: #c62828; }

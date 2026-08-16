@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}メニュー読み取り結果の確認{% endblock %}
+{% block nav %}
+  <span class="who">管理者</span>
+  <a href="{{ url_for('admin_dashboard') }}">管理画面に戻る</a>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>PDFの読み取り結果を確認してください</h1>
+  <p class="muted">
+    PDFから自動で読み取った内容です。まだ何も登録されていません。内容を確認し、必要であれば修正してから
+    「この内容で登録する」を押してください。読み取りに失敗している日付はチェックを外すか、そのまま手で直せます。
+  </p>
+</div>
+
+<form method="post" action="{{ url_for('admin_import_menu_commit') }}">
+  {% for d in dates %}
+  <input type="hidden" name="dates" value="{{ d }}">
+  <div class="card">
+    <div class="date-header">
+      <h2>{{ d }}</h2>
+      <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:#555;">
+        <input type="checkbox" name="include_{{ d }}" checked style="width:auto;">
+        この日を登録する
+      </label>
+    </div>
+    <div class="grid-form">
+      {% for code in category_codes %}
+      <label>{{ category_labels[code] }}
+        <input type="text" name="name_{{ d }}_{{ code }}" value="{{ parsed[d][code] }}">
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="card">
+    <button type="submit" class="btn primary">この内容で登録する</button>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn" style="margin-left:8px;">キャンセル</a>
+  </div>
+</form>
+{% endblock %}

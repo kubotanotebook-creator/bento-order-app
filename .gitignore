@@ -1,0 +1,5 @@
+bento.db
+__pycache__/
+*.pyc
+.claude/
+.env

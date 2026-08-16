@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}お弁当注文{% endblock %}
+{% block nav %}
+  <span class="who">{{ employee_name }} さん</span>
+  <a href="{{ url_for('my_orders') }}">注文履歴・費用</a>
+  <a href="{{ url_for('logout') }}">ログアウト</a>
+{% endblock %}
+{% block content %}
+{% if quick_status %}
+<div class="card quick-status">
+  <h3 style="margin-top:0;">あなたの注文状況</h3>
+  {% for qs in quick_status %}
+  <div class="quick-status-row {{ 'ok' if qs.ordered else 'warn' }}">
+    <span class="quick-status-label">{% if qs.is_today %}本日{% else %}次回営業日{% endif %}({{ qs.date }} {{ qs.weekday }})</span>
+    {% if qs.ordered %}
+      <span>✓ {{ qs.display }} を注文中</span>
+    {% else %}
+      <span>注文なし{% if qs.is_today %} — お休みなどで本日分の変更が必要な場合は、当日のお昼(12:00)までに松浦さんか陽介さんまでメモでお伝えください{% endif %}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h1>お弁当注文(1食 ¥{{ price }})</h1>
+  <p class="muted">週の注文は、注文する週の前の週の金曜15:00が締切です(週によっては個別に締切が変わっている場合もあります)。締切後に当日分を追加・変更したい場合は、当日のお昼(12:00)までに松浦さんか陽介さんまでメモでお伝えください。</p>
+  <div class="glance-legend">
+    <span><span class="glance-dot fry legend-dot">◎</span>フライあり</span>
+    <span><span class="glance-dot nofry legend-dot">◎</span>フライなし</span>
+    <span><span class="glance-dot veg legend-dot">◎</span>やさい</span>
+    <span><span class="glance-dot none legend-dot">−</span>注文なし</span>
+  </div>
+</div>
+
+{% if not weeks_info %}
+  <div class="card">
+    <p>現在、注文可能なメニューが登録されていません。管理者にお問い合わせください。</p>
+  </div>
+{% endif %}
+
+{% for week in weeks_info %}
+<div class="card week-card">
+  <div class="date-header">
+    <h2>{{ week.label }}{% if week.is_current_week %}(今週){% endif %}</h2>
+    {% if week.open %}
+      <span class="badge open">受付中(締切 {{ week.deadline_str }})</span>
+    {% else %}
+      <span class="badge closed">受付終了</span>
+    {% endif %}
+  </div>
+
+  <div class="week-glance">
+    {% for day in week.days %}
+    <div class="glance-cell {{ 'is-today' if day.is_today }}">
+      <div class="glance-day">{{ day.weekday }}</div>
+      <div class="glance-date">{{ day.mmdd }}</div>
+      {% if day.selected_code %}
+        <div class="glance-dot {{ day.selected_code }}" title="{{ category_labels[day.selected_code] }}">◎</div>
+        <div class="glance-cat">{{ category_labels[day.selected_code] }}</div>
+      {% else %}
+        <div class="glance-dot none" title="注文なし">−</div>
+        <div class="glance-cat">なし</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if not week.open and week.is_current_week %}
+    <p class="notice">今週分はすでに締切済みです。当日分の追加・変更をご希望の場合は、当日のお昼(12:00)までに松浦さんか陽介さんまでメモでお伝えください。</p>
+  {% endif %}
+
+  {% if week.open %}
+  <form method="post" action="{{ url_for('order_week') }}">
+    <input type="hidden" name="week_monday" value="{{ week.monday }}">
+    {% for day in week.days %}
+    <div class="day-row">
+      <div class="day-title">{{ day.date }}({{ day.weekday }})</div>
+      <div class="day-choices">
+        {% for code in category_codes %}
+          {% if code in day.cats %}
+          <label>
+            <input type="radio" name="day_{{ day.date }}" value="{{ code }}"
+              {% if day.selected_code == code %}checked{% endif %}>
+            <span>{{ category_labels[code] }}: {{ day.cats[code].name }}</span>
+          </label>
+          {% endif %}
+        {% endfor %}
+        <label>
+          <input type="radio" name="day_{{ day.date }}" value="none"
+            {% if not day.selected_code %}checked{% endif %}>
+          <span>注文しない</span>
+        </label>
+      </div>
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn primary" style="margin-top: 12px;">この週の注文を確定・更新する</button>
+  </form>
+  {% else %}
+    {% for day in week.days %}
+    <div class="day-row">
+      <div class="day-title">{{ day.date }}({{ day.weekday }})</div>
+      {% if day.selected_code %}
+        <div class="muted">選択中: {{ category_labels[day.selected_code] }}({{ day.cats[day.selected_code].name }})</div>
+      {% else %}
+        <div class="muted">注文なし</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

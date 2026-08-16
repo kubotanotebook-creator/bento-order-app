@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}注文履歴・費用{% endblock %}
+{% block nav %}
+  <span class="who">{{ employee_name }} さん</span>
+  <a href="{{ url_for('index') }}">メニューに戻る</a>
+  <a href="{{ url_for('logout') }}">ログアウト</a>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>注文履歴・費用</h1>
+  <div class="summary-row">
+    <div class="stat"><span class="stat-label">合計金額</span><span class="stat-value">¥{{ total }}</span></div>
+    <div class="stat"><span class="stat-label">未精算</span><span class="stat-value">¥{{ unpaid_total }}</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-scroll">
+  <table class="table">
+    <thead>
+      <tr><th>日付</th><th>メニュー</th><th>金額</th><th>支払状況</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for o in orders %}
+      <tr>
+        <td data-label="日付">{{ o.order_date }}</td>
+        <td data-label="メニュー">{{ o.item_display }}</td>
+        <td data-label="金額">¥{{ o.unit_price * o.quantity }}</td>
+        <td data-label="支払状況">{% if o.paid %}<span class="badge open">精算済</span>{% else %}<span class="badge closed">未精算</span>{% endif %}</td>
+        <td data-label="">
+          {% if o.cancellable %}
+          <form method="post" action="{{ url_for('cancel_order') }}" onsubmit="return confirm('キャンセルしますか?');">
+            <input type="hidden" name="order_id" value="{{ o.id }}">
+            <button type="submit" class="btn small">キャンセル</button>
+          </form>
+          {% else %}
+          <span class="muted" style="font-size: 0.8rem;">締切済み</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">注文履歴がありません。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

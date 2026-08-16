@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}管理者ログイン{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>管理者ログイン</h1>
+  <form method="post" action="{{ url_for('admin_login') }}">
+    <label>パスワード</label>
+    <input type="password" name="password" required autofocus>
+    <button type="submit" class="btn primary">ログイン</button>
+  </form>
+</div>
+{% endblock %}

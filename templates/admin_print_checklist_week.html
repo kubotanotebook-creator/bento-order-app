@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>受け取りチェック表(週間) {{ week_label }}</title>
+<style>
+  * { box-sizing: border-box; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    color: #222;
+    margin: 0;
+    padding: 20px;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .toolbar a { color: #555; text-decoration: none; font-size: 0.9rem; }
+  .toolbar form { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+  .toolbar input[type=date] { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; }
+  .btn {
+    border: none; border-radius: 6px; padding: 8px 16px; font-size: 0.9rem;
+    cursor: pointer; background: #d9480f; color: #fff;
+  }
+  .btn.secondary { background: #555; }
+  .sheet { max-width: 900px; margin: 0 auto; }
+  .sheet h1 { font-size: 1.05rem; margin: 0 0 2px; }
+  .sheet .sub { color: #555; margin-bottom: 4px; font-size: 0.85rem; }
+
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 0.7rem;
+    color: #444;
+    margin-bottom: 3px;
+  }
+  .legend-note { display: inline-flex; align-items: center; gap: 4px; }
+  .note {
+    font-size: 0.66rem;
+    color: #8a5200;
+    background: #fff4e5;
+    border-radius: 6px;
+    padding: 3px 6px;
+    margin-bottom: 5px;
+  }
+
+  table.matrix { width: 100%; border-collapse: collapse; }
+  table.matrix th, table.matrix td {
+    border: 1px solid #999;
+    padding: 2px 3px;
+    text-align: center;
+    font-size: 0.78rem;
+  }
+  table.matrix th { background: #eee; }
+  table.matrix .wk-label { font-size: 1rem; font-weight: 700; display: block; }
+  table.matrix .mmdd-label { font-size: 0.72rem; color: #555; }
+  table.matrix td.name-col, table.matrix th.name-col {
+    text-align: left;
+    padding-left: 8px;
+    width: 13%;
+  }
+  table.matrix td.name-col {
+    font-size: 1rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+  table.matrix .day-count { font-size: 0.68rem; color: #666; font-weight: normal; }
+  .day-menu { margin-top: 3px; text-align: left; font-weight: normal; }
+  .day-menu-item {
+    font-size: 0.58rem;
+    color: #333;
+    margin-bottom: 1px;
+    line-height: 1.1;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    padding-left: 3px;
+    border-left: 2px solid #999;
+  }
+  .day-menu-item.fry { border-left-color: #d9480f; }
+  .day-menu-item.nofry { border-left-color: #7048e8; }
+  .day-menu-item.veg { border-left-color: #2f9e44; }
+  table.matrix tr.blank-row td { height: 18px; }
+  /* Zebra striping + a heavier line under every row: rows are wide (5 day
+     columns), so it's easy for the eye to slip onto a neighboring person's
+     row while checking a box on the right-hand side. The alternating
+     background lets you visually re-anchor on the correct row, and the
+     thicker bottom border makes each row's boundary unambiguous. */
+  table.matrix tbody tr:nth-child(even) { background: #f3f4f7; }
+  table.matrix tbody tr td { border-bottom: 2px solid #888; }
+  table.matrix tbody tr { break-inside: avoid; page-break-inside: avoid; }
+
+  .cat-dot {
+    display: inline-block;
+    width: 5.6em;
+    padding: 1px 4px;
+    line-height: 1.2;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-align: center;
+    vertical-align: middle;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .cat-dot.fry { background: #d9480f; }
+  .cat-dot.nofry { background: #7048e8; }
+  .cat-dot.veg { background: #2f9e44; }
+  .pickup-box {
+    display: inline-block;
+    width: 15px; height: 15px;
+    border: 2px solid #666;
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
+  .order-cell {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  @media print {
+    .toolbar { display: none; }
+    body { padding: 0; }
+    .sheet { max-width: none; }
+  }
+  @page { size: A4 landscape; margin: 12mm; }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="{{ url_for('admin_dashboard') }}">← 管理画面に戻る</a>
+    <form method="get" action="{{ url_for('admin_print_checklist_week') }}">
+      <label>週の月曜日
+        <input type="date" name="monday" value="{{ monday }}">
+      </label>
+      <button type="submit" class="btn secondary">表示</button>
+    </form>
+    <button type="button" class="btn" onclick="window.print()">印刷する(A4・週1枚)</button>
+    <a href="{{ url_for('admin_print_checklist', date=day_strs[0]) }}" target="_blank">1日分だけ印刷したい場合はこちら</a>
+  </div>
+
+  <div class="sheet">
+    <h1>お弁当 受け取りチェック表(週間)</h1>
+    <p class="sub">{{ week_label }}</p>
+
+    <div class="legend">
+      {% for code in category_codes %}
+      <span class="cat-dot {{ code }}">{{ category_short[code] }}</span>
+      {% endfor %}
+      <span class="legend-note"><span class="pickup-box"></span>受け取り時にここへレ点</span>
+    </div>
+    <p class="note">
+      ※ 締切後に当日追加で頼んだ人がいる場合、その人の行・その日の欄に丸印と区分の頭文字を手書きで追記してください。
+      まだこの表にいない人が当日追加した場合は、一番下の空欄行に氏名を書いて使ってください。
+    </p>
+
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th class="name-col">氏名</th>
+          {% for day in day_infos %}
+          <th>
+            <span class="wk-label">{{ day.weekday }}</span><span class="mmdd-label">{{ day.mmdd }}</span><br>
+            <span class="day-count">{{ day.count }}食</span>
+            {% if day.cats %}
+            <div class="day-menu">
+              {% for code in category_codes %}
+                {% if day.cats.get(code) %}
+                <div class="day-menu-item {{ code }}">{{ category_short[code] }}: {{ day.cats[code] }}</div>
+                {% endif %}
+              {% endfor %}
+            </div>
+            {% endif %}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for name in employees %}
+        <tr>
+          <td class="name-col">{{ name }}</td>
+          {% for day in day_infos %}
+          <td>
+            {% set code = matrix.get(name, {}).get(day.date) %}
+            {% if code %}
+              <div class="order-cell">
+                <span class="cat-dot {{ code }}">{{ category_short[code] }}</span>
+                <span class="pickup-box"></span>
+              </div>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% if not employees %}
+        <tr><td class="name-col" colspan="{{ day_infos|length + 1 }}">この週の注文はまだありません。</td></tr>
+        {% endif %}
+        {% for _ in range(5) %}
+        <tr class="blank-row">
+          <td class="name-col"></td>
+          {% for day in day_infos %}<td></td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

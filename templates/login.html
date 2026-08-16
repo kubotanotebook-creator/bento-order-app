@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}お名前の入力{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>お名前を入力してください</h1>
+  <form method="post" action="{{ url_for('index') }}">
+    <label>氏名</label>
+    <input type="text" name="employee_name" placeholder="例: 山田 太郎" required autofocus>
+    <button type="submit" class="btn primary">はじめる</button>
+  </form>
+  <p class="muted">※簡易ログインです。同じ名前で毎回入力してください。</p>
+</div>
+{% endblock %}
