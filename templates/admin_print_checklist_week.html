@@ -84,6 +84,18 @@
   .day-menu-item.fry { border-left-color: #d9480f; }
   .day-menu-item.nofry { border-left-color: #7048e8; }
   .day-menu-item.veg { border-left-color: #2f9e44; }
+  .ticket-check {
+    margin-top: 2px;
+    padding-top: 2px;
+    border-top: 1px dashed #999;
+    font-size: 0.56rem;
+    color: #444;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .ticket-check .pickup-box { width: 11px; height: 11px; }
   table.matrix tr.blank-row td { height: 18px; }
   /* Zebra striping + a heavier line under every row: rows are wide (5 day
      columns), so it's easy for the eye to slip onto a neighboring person's
@@ -174,9 +186,10 @@
             <div class="day-menu">
               {% for code in category_codes %}
                 {% if day.cats.get(code) %}
-                <div class="day-menu-item {{ code }}">{{ category_short[code] }}: {{ day.cats[code] }}</div>
+                <div class="day-menu-item {{ code }}">{{ category_short[code] }}({{ day.cat_counts.get(code, 0) }}): {{ day.cats[code] }}</div>
                 {% endif %}
               {% endfor %}
+              <div class="ticket-check">届いたチケット数と照合<span class="pickup-box"></span></div>
             </div>
             {% endif %}
           </th>
@@ -203,7 +216,7 @@
         {% if not employees %}
         <tr><td class="name-col" colspan="{{ day_infos|length + 1 }}">この週の注文はまだありません。</td></tr>
         {% endif %}
-        {% for _ in range(5) %}
+        {% for _ in range(4) %}
         <tr class="blank-row">
           <td class="name-col"></td>
           {% for day in day_infos %}<td></td>{% endfor %}

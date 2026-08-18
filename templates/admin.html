@@ -7,10 +7,17 @@
 {% block content %}
 
 <div class="card">
-  <h1>本日({{ today }})の注文 — 朝の出欠チェック用</h1>
+  <h1>{{ check_date }}({{ check_date_weekday }}){% if is_check_date_today %}(本日){% endif %}の注文 — 出欠チェック用</h1>
+  <form method="get" action="{{ url_for('admin_dashboard') }}" class="inline-form" style="margin-bottom:10px;">
+    <label style="margin-bottom:0;">確認する日
+      <input type="date" name="check_date" value="{{ check_date }}">
+    </label>
+    <button type="submit" class="btn small">表示</button>
+    {% if not is_check_date_today %}<a href="{{ url_for('admin_dashboard') }}" class="btn small">今日に戻す</a>{% endif %}
+  </form>
   <p class="muted">
     <a href="{{ url_for('admin_print_checklist_week') }}" target="_blank" class="btn small">今週分をまとめてA4で印刷(1枚)</a>
-    <a href="{{ url_for('admin_print_checklist', date=today) }}" target="_blank" class="btn small">当日分だけ印刷</a>
+    <a href="{{ url_for('admin_print_checklist', date=check_date) }}" target="_blank" class="btn small">この日の分だけ印刷</a>
     <span style="margin-left:6px;">お弁当受け取り時に紙にレ点をつけるための一覧です。週1枚まとめて印刷しておき、締切後の当日追加分はその紙に手書きで追記する運用がおすすめです。</span>
   </p>
   {% if today_orders %}
@@ -31,7 +38,7 @@
               <button type="submit" class="btn small">元に戻す</button>
             </form>
           {% else %}
-          <form method="post" action="{{ url_for('admin_cancel_order') }}" onsubmit="return confirm('{{ o.employee_name }}さんの本日の注文をキャンセルしますか?');">
+          <form method="post" action="{{ url_for('admin_cancel_order') }}" onsubmit="return confirm('{{ o.employee_name }}さんの{{ check_date }}の注文をキャンセルしますか?');">
             <input type="hidden" name="order_id" value="{{ o.id }}">
             <button type="submit" class="btn small">キャンセル</button>
           </form>
@@ -43,7 +50,7 @@
   </table>
   </div>
   {% else %}
-  <p class="muted">本日の注文はありません。</p>
+  <p class="muted">この日の注文はありません。</p>
   {% endif %}
 </div>
 
@@ -115,14 +122,10 @@
 <div class="tab-panel" data-tab="summary">
   <div class="card">
     <h1>集計サマリー(リリテイへの注文数の目安)</h1>
-    <div class="summary-row">
-      <div class="stat"><span class="stat-label">未精算合計</span><span class="stat-value">¥{{ total_unpaid }}</span></div>
-      <div class="stat"><span class="stat-label">精算済合計</span><span class="stat-value">¥{{ total_paid }}</span></div>
-    </div>
     {% for d, s in summary.items() %}
     <div class="summary-block">
       <h3>{{ d }}</h3>
-      <p>合計 {{ s.count }} 食 / ¥{{ s.revenue }}</p>
+      <p>合計 {{ s.count }} 食</p>
       <ul>
         {% for item_name, qty in s.item_counts.items() %}
           <li>{{ item_name }}: {{ qty }} 食
@@ -210,33 +213,37 @@
 <div class="tab-panel" data-tab="orders">
   <div class="card">
     <h1>注文一覧</h1>
-    <div class="table-scroll">
-    <table class="table">
-      <thead>
-        <tr><th>日付</th><th>氏名</th><th>区分</th><th>支払済</th><th>操作</th></tr>
-      </thead>
-      <tbody>
-        {% for o in orders %}
-        <tr>
-          <td data-label="日付">{{ o.order_date }}</td>
-          <td data-label="氏名">{{ o.employee_name }}</td>
-          <td data-label="区分">{{ category_labels[o.category] }}</td>
-          <td data-label="支払済">
-            <input type="checkbox" class="paid-toggle" data-order-id="{{ o.id }}" {% if o.paid %}checked{% endif %}>
-          </td>
-          <td data-label="操作">
-            <form method="post" action="{{ url_for('admin_cancel_order') }}" onsubmit="return confirm('この注文をキャンセルしますか?');">
-              <input type="hidden" name="order_id" value="{{ o.id }}">
-              <button type="submit" class="btn small">キャンセル</button>
-            </form>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="5" class="muted">注文がありません。</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    {% for order_date, items in orders|groupby('order_date') %}
+    <div class="summary-block">
+      <h3>{{ order_date }}</h3>
+      <div class="table-scroll">
+      <table class="table">
+        <thead>
+          <tr><th>氏名</th><th>区分</th><th>支払済</th><th>操作</th></tr>
+        </thead>
+        <tbody>
+          {% for o in items %}
+          <tr>
+            <td data-label="氏名">{{ o.employee_name }}</td>
+            <td data-label="区分">{{ category_labels[o.category] }}</td>
+            <td data-label="支払済">
+              <input type="checkbox" class="paid-toggle" data-order-id="{{ o.id }}" {% if o.paid %}checked{% endif %}>
+            </td>
+            <td data-label="操作">
+              <form method="post" action="{{ url_for('admin_cancel_order') }}" onsubmit="return confirm('この注文をキャンセルしますか?');">
+                <input type="hidden" name="order_id" value="{{ o.id }}">
+                <button type="submit" class="btn small">キャンセル</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
     </div>
+    {% else %}
+    <p class="muted">注文がありません。</p>
+    {% endfor %}
   </div>
 </div>
 

@@ -436,14 +436,10 @@ def admin_dashboard():
     summary = {}
     for o in orders:
         d = o["order_date"]
-        s = summary.setdefault(d, {"count": 0, "revenue": 0, "item_counts": {}, "item_names": {}})
+        s = summary.setdefault(d, {"count": 0, "item_counts": {}, "item_names": {}})
         s["count"] += o["quantity"]
-        s["revenue"] += o["unit_price"] * o["quantity"]
         s["item_counts"][o["item_display"]] = s["item_counts"].get(o["item_display"], 0) + o["quantity"]
         s["item_names"].setdefault(o["item_display"], []).append(o["employee_name"])
-
-    total_unpaid = sum(o["unit_price"] * o["quantity"] for o in orders if not o["paid"])
-    total_paid = sum(o["unit_price"] * o["quantity"] for o in orders if o["paid"])
 
     known_employees = [
         r["employee_name"]
@@ -452,17 +448,23 @@ def admin_dashboard():
 
     weekday_labels = list(enumerate(WEEKDAY_JP))
 
-    # Today's orders only, surfaced separately at the top of the dashboard so
-    # the admin can do a quick morning cross-check against who's actually in
-    # the office (and cancel for anyone out sick) without scrolling through
-    # the full multi-week order list. Queried separately (not filtered from
-    # `orders`) so cancelled-today rows still show up struck-through instead
-    # of just disappearing, which was confusing admins doing the morning check.
+    # This card defaults to today but can be pointed at any date (e.g. to
+    # check tomorrow's roster ahead of time), via ?check_date=YYYY-MM-DD.
+    # Surfaced separately from `orders` (not just filtered from it) so
+    # cancelled rows for that date still show up struck-through instead of
+    # just disappearing, which was confusing admins doing the morning check.
+    check_date_str = request.args.get("check_date", today_str)
+    try:
+        date.fromisoformat(check_date_str)
+    except ValueError:
+        check_date_str = today_str
+    check_date_weekday = WEEKDAY_JP[date.fromisoformat(check_date_str).weekday()]
+
     today_orders_raw = db.execute(
         "SELECT o.*, m.category as category, m.name as dish_name "
         "FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
         "WHERE o.order_date = ? ORDER BY o.employee_name",
-        (today_str,),
+        (check_date_str,),
     ).fetchall()
     today_orders = []
     for r in today_orders_raw:
@@ -491,11 +493,12 @@ def admin_dashboard():
         menu_by_date=menu_by_date,
         orders=orders,
         today_orders=today_orders,
+        check_date=check_date_str,
+        check_date_weekday=check_date_weekday,
+        is_check_date_today=(check_date_str == today_str),
         summary=summary,
         settings=settings,
         today=today_str,
-        total_unpaid=total_unpaid,
-        total_paid=total_paid,
         category_codes=CATEGORY_CODES,
         category_labels=CATEGORY_LABELS,
         known_employees=known_employees,
@@ -865,9 +868,15 @@ def admin_print_checklist_week():
 
     matrix = {}
     day_counts = {d: 0 for d in day_strs}
+    # Per-category counts too (not just the day total), so the printed sheet
+    # itself carries the numbers needed to check delivered tickets against
+    # the order — no need to go back to the 集計サマリー screen for that.
+    cat_counts = {d: {} for d in day_strs}
     for r in order_rows:
         matrix.setdefault(r["employee_name"], {})[r["order_date"]] = r["category"]
         day_counts[r["order_date"]] += r["quantity"]
+        cc = cat_counts[r["order_date"]]
+        cc[r["category"]] = cc.get(r["category"], 0) + r["quantity"]
 
     employees = sorted(matrix.keys())
 
@@ -878,6 +887,7 @@ def admin_print_checklist_week():
             "mmdd": f"{d.month}/{d.day}",
             "weekday": WEEKDAY_JP[d.weekday()],
             "cats": menu_by_date.get(d_str, {}),
+            "cat_counts": cat_counts[d_str],
             "count": day_counts[d_str],
         })
 
