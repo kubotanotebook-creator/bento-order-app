@@ -25,7 +25,11 @@
         <td data-label="メニュー" class="{{ 'is-cancelled' if o.status == 'cancelled' else '' }}">{{ o.item_display }}</td>
         <td data-label="操作">
           {% if o.status == 'cancelled' %}
-            <span class="muted" style="font-size:0.8rem;">キャンセル済み</span>
+            <span class="muted" style="font-size:0.8rem; margin-right:6px;">キャンセル済み</span>
+            <form method="post" action="{{ url_for('admin_restore_order') }}" style="display:inline;" onsubmit="return confirm('{{ o.employee_name }}さんの注文を元に戻しますか?');">
+              <input type="hidden" name="order_id" value="{{ o.id }}">
+              <button type="submit" class="btn small">元に戻す</button>
+            </form>
           {% else %}
           <form method="post" action="{{ url_for('admin_cancel_order') }}" onsubmit="return confirm('{{ o.employee_name }}さんの本日の注文をキャンセルしますか?');">
             <input type="hidden" name="order_id" value="{{ o.id }}">

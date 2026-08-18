@@ -683,6 +683,32 @@ def admin_cancel_order():
     return redirect(url_for("admin_dashboard"))
 
 
+@app.route("/admin/orders/restore", methods=["POST"])
+def admin_restore_order():
+    """Undo a cancellation. Refuses if the employee already has a separate
+    'ordered' row for that date (e.g. they re-ordered after being cancelled),
+    since restoring would otherwise create two live orders for the same day."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    order_id = request.form.get("order_id")
+    order = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        flash("対象の注文が見つかりません。", "error")
+        return redirect(url_for("admin_dashboard"))
+    conflict = db.execute(
+        "SELECT id FROM orders WHERE employee_name = ? AND order_date = ? AND status = 'ordered' AND id != ?",
+        (order["employee_name"], order["order_date"], order_id),
+    ).fetchone()
+    if conflict:
+        flash(f"{order['employee_name']} さんは既にこの日の別の注文があるため元に戻せません。", "error")
+        return redirect(url_for("admin_dashboard"))
+    db.execute("UPDATE orders SET status = 'ordered' WHERE id = ?", (order_id,))
+    db.commit()
+    flash(f"{order['employee_name']} さんの注文を元に戻しました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
 @app.route("/admin/orders/toggle-paid", methods=["POST"])
 def admin_toggle_paid():
     if not admin_required():
