@@ -455,8 +455,20 @@ def admin_dashboard():
     # Today's orders only, surfaced separately at the top of the dashboard so
     # the admin can do a quick morning cross-check against who's actually in
     # the office (and cancel for anyone out sick) without scrolling through
-    # the full multi-week order list.
-    today_orders = [o for o in orders if o["order_date"] == today_str]
+    # the full multi-week order list. Queried separately (not filtered from
+    # `orders`) so cancelled-today rows still show up struck-through instead
+    # of just disappearing, which was confusing admins doing the morning check.
+    today_orders_raw = db.execute(
+        "SELECT o.*, m.category as category, m.name as dish_name "
+        "FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
+        "WHERE o.order_date = ? ORDER BY o.employee_name",
+        (today_str,),
+    ).fetchall()
+    today_orders = []
+    for r in today_orders_raw:
+        row = dict(r)
+        row["item_display"] = item_display_name(r["category"], r["dish_name"])
+        today_orders.append(row)
 
     # Weeks derived from the registered menu (from today onward), each with
     # its effective deadline, so the admin can manually pin a deadline for a

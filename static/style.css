@@ -246,3 +246,34 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 0.9rem; }
 .flash-success { background: #e6f4ea; color: #1a7f37; }
 .flash-error { background: #fbe9e7; color: #c62828; }
+
+.is-cancelled { text-decoration: line-through; color: #aaa; }
+
+/* Admin dashboard tabs: the page used to be one long scroll through every
+   section (settings, summary, menu registration, proxy orders, order list).
+   Splitting into tabs keeps each section reachable without endless
+   scrolling; "本日の注文" stays outside the tabs since it's the one card
+   admins need to see immediately every morning. */
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 18px;
+  border-bottom: 1px solid #e2e4e8;
+  padding-bottom: 0;
+}
+.tab-btn {
+  border: none;
+  background: transparent;
+  color: #666;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+}
+.tab-btn.active { color: #d9480f; border-bottom-color: #d9480f; }
+.tab-btn:hover { color: #d9480f; }
+
+.paid-toggle { width: auto; margin: 0; }
