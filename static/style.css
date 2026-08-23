@@ -256,6 +256,26 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 
 .summary-block { border-top: 1px dashed #e2e4e8; padding-top: 10px; margin-top: 10px; }
 
+/* Collapsible per-date sections (集計サマリー / 注文一覧): today's group opens
+   by default via .is-today, everything else starts collapsed so a long
+   history doesn't force endless scrolling to find one day. */
+.date-group { border-top: 1px dashed #e2e4e8; padding-top: 10px; margin-top: 10px; }
+.date-group:first-child { border-top: none; margin-top: 0; padding-top: 0; }
+.date-group-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.date-toggle-btn {
+  background: none; border: none; cursor: pointer; padding: 4px 0;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.95rem; font-weight: 700; color: #24292f;
+}
+.date-toggle-btn .chevron { font-size: 0.7rem; color: #888; display: inline-block; transition: transform 0.15s ease; }
+.date-toggle-btn.is-open .chevron { transform: rotate(90deg); }
+.date-toggle-btn.is-today { color: #d9480f; }
+.date-counts { font-size: 0.85rem; color: #666; }
+.date-group-body { margin-top: 10px; }
+
+.day-choices-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 4px; }
+.day-col-label { font-size: 0.8rem; color: #666; margin-bottom: 4px; font-weight: 600; }
+
 .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 0.9rem; }
 .flash-success { background: #e6f4ea; color: #1a7f37; }
 .flash-error { background: #fbe9e7; color: #c62828; }

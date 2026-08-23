@@ -515,10 +515,11 @@ def admin_dashboard():
     summary = {}
     for o in orders:
         d = o["order_date"]
-        s = summary.setdefault(d, {"count": 0, "item_counts": {}, "item_names": {}})
+        s = summary.setdefault(d, {"count": 0, "item_counts": {}, "item_names": {}, "cat_counts": {}})
         s["count"] += o["quantity"]
         s["item_counts"][o["item_display"]] = s["item_counts"].get(o["item_display"], 0) + o["quantity"]
         s["item_names"].setdefault(o["item_display"], []).append(o["employee_name"])
+        s["cat_counts"][o["category"]] = s["cat_counts"].get(o["category"], 0) + o["quantity"]
 
     known_employees = [
         r["employee_name"]
@@ -567,6 +568,26 @@ def admin_dashboard():
             "is_override": override is not None,
         })
 
+    # Same weeks as `week_deadlines`, but shaped for the "1週間分まとめて代理
+    # 登録" form: each day needs its per-category menu items so the form can
+    # offer them as choices, the same way the employee's own weekly form does.
+    proxy_weeks = []
+    week_days = {}
+    for d_str in sorted(menu_by_date.keys()):
+        d = date.fromisoformat(d_str)
+        week_days.setdefault(week_monday(d), []).append(d)
+    for monday in sorted(week_days.keys()):
+        days = []
+        for d in week_days[monday]:
+            d_str = d.isoformat()
+            days.append({
+                "date": d_str,
+                "mmdd": f"{d.month}/{d.day}",
+                "weekday": WEEKDAY_JP[d.weekday()],
+                "cats": {item["category"]: item for item in menu_by_date[d_str]},
+            })
+        proxy_weeks.append({"monday": monday.isoformat(), "label": build_week_label(monday), "days": days})
+
     return render_template(
         "admin.html",
         menu_by_date=menu_by_date,
@@ -580,9 +601,11 @@ def admin_dashboard():
         today=today_str,
         category_codes=CATEGORY_CODES,
         category_labels=CATEGORY_LABELS,
+        category_short=CATEGORY_SHORT,
         known_employees=known_employees,
         weekday_labels=weekday_labels,
         week_deadlines=week_deadlines,
+        proxy_weeks=proxy_weeks,
     )
 
 
@@ -711,28 +734,15 @@ def admin_delete_menu():
     return redirect(url_for("admin_dashboard"))
 
 
-@app.route("/admin/orders/proxy-add", methods=["POST"])
-def admin_proxy_add_order():
-    """Admin enters an order on behalf of an employee, bypassing the weekly deadline.
-    Matches the real workflow: same-day requests are told to the admin directly."""
-    if not admin_required():
-        return redirect(url_for("admin_login"))
-    db = get_db()
-    settings = get_settings()
-    order_date = request.form.get("order_date")
-    employee_name = request.form.get("employee_name", "").strip()
-    category = request.form.get("category")
-
-    if not order_date or not employee_name or category not in CATEGORY_CODES:
-        flash("日付・氏名・区分をすべて入力してください。", "error")
-        return redirect(url_for("admin_dashboard"))
-
+def admin_upsert_order(db, settings, order_date, employee_name, category):
+    """Create or overwrite the employee's active order for one day, as the
+    admin. Shared by the single-day and whole-week proxy forms. Returns True
+    if a menu item existed for (order_date, category) and the write happened."""
     menu_item = db.execute(
         "SELECT * FROM menu_items WHERE item_date = ? AND category = ?", (order_date, category)
     ).fetchone()
     if not menu_item:
-        flash("その日・区分のメニューが登録されていません。先にメニューを登録してください。", "error")
-        return redirect(url_for("admin_dashboard"))
+        return False
 
     existing = db.execute(
         "SELECT * FROM orders WHERE employee_name = ? AND order_date = ? AND status = 'ordered'",
@@ -761,8 +771,85 @@ def admin_proxy_add_order():
                     "UPDATE orders SET menu_item_id = ?, unit_price = ?, created_at = ?, created_by = 'admin' WHERE id = ?",
                     (menu_item["id"], settings["price"], now_jst().isoformat(), dup["id"]),
                 )
+    return True
+
+
+@app.route("/admin/orders/proxy-add", methods=["POST"])
+def admin_proxy_add_order():
+    """Admin enters an order on behalf of an employee, bypassing the weekly deadline.
+    Matches the real workflow: same-day requests are told to the admin directly."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    settings = get_settings()
+    order_date = request.form.get("order_date")
+    employee_name = request.form.get("employee_name", "").strip()
+    category = request.form.get("category")
+
+    if not order_date or not employee_name or category not in CATEGORY_CODES:
+        flash("日付・氏名・区分をすべて入力してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+
+    if not admin_upsert_order(db, settings, order_date, employee_name, category):
+        flash("その日・区分のメニューが登録されていません。先にメニューを登録してください。", "error")
+        return redirect(url_for("admin_dashboard"))
     db.commit()
     flash(f"{employee_name} さんの注文を登録しました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/orders/proxy-add-week", methods=["POST"])
+def admin_proxy_add_week():
+    """Admin registers a whole Mon-Fri week for one named person in one go,
+    instead of submitting the single-day form five times. Bypasses the
+    deadline the same way the single-day proxy form does."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    settings = get_settings()
+    employee_name = request.form.get("employee_name", "").strip()
+    monday_str = request.form.get("week_monday")
+
+    if not employee_name or not monday_str:
+        flash("氏名と週を指定してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        monday = date.fromisoformat(monday_str)
+    except ValueError:
+        flash("週の指定が正しくありません。", "error")
+        return redirect(url_for("admin_dashboard"))
+
+    saved = 0
+    for i in range(5):
+        d_str = (monday + timedelta(days=i)).isoformat()
+        category = request.form.get(f"day_{d_str}")
+        if not category or category not in CATEGORY_CODES:
+            continue
+        if admin_upsert_order(db, settings, d_str, employee_name, category):
+            saved += 1
+    db.commit()
+    if saved:
+        flash(f"{employee_name} さんの{saved}日分の注文を登録しました。", "success")
+    else:
+        flash("登録する区分が選択されていませんでした。", "error")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/orders/mark-day-paid", methods=["POST"])
+def admin_mark_day_paid():
+    """Bulk-mark every active order on one date as paid, for the 注文一覧
+    date group's "全員精算済み" button — avoids clicking the toggle once per
+    person when a whole day's bento was paid for together."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    order_date = request.form.get("order_date")
+    db.execute(
+        "UPDATE orders SET paid = 1 WHERE order_date = ? AND status = 'ordered'",
+        (order_date,),
+    )
+    db.commit()
+    flash(f"{order_date} の注文を全員精算済みにしました。", "success")
     return redirect(url_for("admin_dashboard"))
 
 
