@@ -70,20 +70,7 @@
     overflow-wrap: anywhere;
   }
   table.matrix .day-count { font-size: 0.68rem; color: #666; font-weight: normal; }
-  .day-menu { margin-top: 3px; text-align: left; font-weight: normal; }
-  .day-menu-item {
-    font-size: 0.58rem;
-    color: #333;
-    margin-bottom: 1px;
-    line-height: 1.1;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    padding-left: 3px;
-    border-left: 2px solid #999;
-  }
-  .day-menu-item.fry { border-left-color: #d9480f; }
-  .day-menu-item.nofry { border-left-color: #7048e8; }
-  .day-menu-item.veg { border-left-color: #2f9e44; }
+  .day-summary { margin-top: 3px; display: flex; justify-content: center; gap: 3px; flex-wrap: wrap; }
   .ticket-check {
     margin-top: 2px;
     padding-top: 2px;
@@ -96,7 +83,7 @@
     gap: 4px;
   }
   .ticket-check .pickup-box { width: 11px; height: 11px; }
-  table.matrix tr.blank-row td { height: 18px; }
+  table.matrix tr.blank-row td { height: 28px; }
   /* Zebra striping + a heavier line under every row: rows are wide (5 day
      columns), so it's easy for the eye to slip onto a neighboring person's
      row while checking a box on the right-hand side. The alternating
@@ -183,14 +170,14 @@
             <span class="wk-label">{{ day.weekday }}</span><span class="mmdd-label">{{ day.mmdd }}</span><br>
             <span class="day-count">{{ day.count }}食</span>
             {% if day.cats %}
-            <div class="day-menu">
+            <div class="day-summary">
               {% for code in category_codes %}
-                {% if day.cats.get(code) %}
-                <div class="day-menu-item {{ code }}">{{ category_short[code] }}({{ day.cat_counts.get(code, 0) }}): {{ day.cats[code] }}</div>
+                {% if day.cat_counts.get(code) %}
+                <span class="cat-dot {{ code }}">{{ category_short[code] }}{{ day.cat_counts[code] }}</span>
                 {% endif %}
               {% endfor %}
-              <div class="ticket-check">届いたチケット数と照合<span class="pickup-box"></span></div>
             </div>
+            <div class="ticket-check">届いたチケット数と照合<span class="pickup-box"></span></div>
             {% endif %}
           </th>
           {% endfor %}
