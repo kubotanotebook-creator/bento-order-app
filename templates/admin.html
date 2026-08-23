@@ -119,6 +119,33 @@
     <p class="muted">メニューが登録されている週がありません。</p>
     {% endfor %}
   </div>
+
+  <div class="card">
+    <h1>生年月日の登録リセット</h1>
+    <p class="muted">社員用の注文画面は、なりすまし防止のため初回ログイン時の生年月日(月日)を覚えて次回以降と照合しています。本人が生年月日を間違えて登録してしまいログインできなくなった場合、ここでリセットすると次回ログイン時に再登録できます。</p>
+    {% if registered_employees %}
+    <div class="table-scroll">
+    <table class="table">
+      <thead><tr><th>氏名</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for name in registered_employees %}
+        <tr>
+          <td data-label="氏名">{{ name }}</td>
+          <td data-label="操作">
+            <form method="post" action="{{ url_for('admin_reset_employee_birthday') }}" onsubmit="return confirm('{{ name }}さんの生年月日の登録をリセットしますか?');">
+              <input type="hidden" name="employee_name" value="{{ name }}">
+              <button type="submit" class="btn small">リセット</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="muted">まだ誰も生年月日を登録していません。</p>
+    {% endif %}
+  </div>
 </div>
 
 <div class="tab-panel" data-tab="summary">

@@ -144,6 +144,16 @@ def init_db():
             monday TEXT PRIMARY KEY,
             deadline_at TEXT NOT NULL
         );
+
+        -- Lightweight "is this really you" check for the name-only employee
+        -- login: birthday (MMDD, no year) is recorded the first time a name
+        -- logs in, then must match on every later login from a new browser.
+        -- Not real authentication, just enough to stop someone casually
+        -- typing a coworker's name.
+        CREATE TABLE IF NOT EXISTS employees (
+            name TEXT PRIMARY KEY,
+            birthday TEXT NOT NULL
+        );
         """
     )
     db.commit()
@@ -223,14 +233,57 @@ def item_display_name(category, name):
     return f"{label}({name})" if name else label
 
 
+MONTH_DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]  # Feb=29 to allow leap-day birthdays
+
+
+def normalize_birthday(raw):
+    """'0517' (or '5/17', '5-17') -> '0517' if it's a real month/day, else None."""
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if len(digits) != 4:
+        return None
+    month, day = int(digits[:2]), int(digits[2:])
+    if not (1 <= month <= 12) or not (1 <= day <= MONTH_DAYS[month - 1]):
+        return None
+    return digits
+
+
+def looks_like_full_name(name):
+    """Requires a space between family and given name (like the 'like:山田
+    太郎' example), since surname-only names collide too often between
+    employees to safely tell people apart."""
+    return " " in name or "　" in name
+
+
 # ---------- Employee routes ----------
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         name = request.form.get("employee_name", "").strip()
-        if name:
-            session["employee_name"] = name
+        birthday_raw = request.form.get("birthday", "").strip()
+
+        if not name:
+            flash("氏名を入力してください。", "error")
+            return redirect(url_for("index"))
+        if not looks_like_full_name(name):
+            flash("苗字だけでなく、フルネームで入力してください(例: 山田 太郎)。", "error")
+            return redirect(url_for("index"))
+        birthday = normalize_birthday(birthday_raw)
+        if not birthday:
+            flash("生年月日(月日)を4桁で入力してください(例: 5月17日→0517)。", "error")
+            return redirect(url_for("index"))
+
+        db = get_db()
+        existing = db.execute("SELECT birthday FROM employees WHERE name = ?", (name,)).fetchone()
+        if existing:
+            if existing["birthday"] != birthday:
+                flash("氏名と生年月日の組み合わせが一致しません。ご本人の生年月日を入力してください。", "error")
+                return redirect(url_for("index"))
+        else:
+            db.execute("INSERT INTO employees (name, birthday) VALUES (?, ?)", (name, birthday))
+            db.commit()
+
+        session["employee_name"] = name
         return redirect(url_for("index"))
 
     employee_name = session.get("employee_name")
@@ -546,6 +599,14 @@ def admin_dashboard():
         for r in db.execute("SELECT DISTINCT employee_name FROM orders ORDER BY employee_name").fetchall()
     ]
 
+    # Names that have registered a birthday for the login check, so an admin
+    # can reset one if someone mistypes it on first login and locks
+    # themselves out (birthday itself isn't shown here — the reset button
+    # doesn't need it, and there's no reason to display it otherwise).
+    registered_employees = [
+        r["name"] for r in db.execute("SELECT name FROM employees ORDER BY name").fetchall()
+    ]
+
     weekday_labels = list(enumerate(WEEKDAY_JP))
 
     # This card defaults to today but can be pointed at any date (e.g. to
@@ -623,6 +684,7 @@ def admin_dashboard():
         category_labels=CATEGORY_LABELS,
         category_short=CATEGORY_SHORT,
         known_employees=known_employees,
+        registered_employees=registered_employees,
         proxy_menu_map=proxy_menu_map,
         weekday_labels=weekday_labels,
         week_deadlines=week_deadlines,
@@ -871,6 +933,20 @@ def admin_mark_day_paid():
     )
     db.commit()
     flash(f"{order_date} の注文を全員精算済みにしました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/employees/reset-birthday", methods=["POST"])
+def admin_reset_employee_birthday():
+    """Forget a name's registered birthday (e.g. typo on first login, or the
+    person forgot it) so they can register it fresh next time they log in."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    name = request.form.get("employee_name", "").strip()
+    db.execute("DELETE FROM employees WHERE name = ?", (name,))
+    db.commit()
+    flash(f"{name} さんの生年月日の登録をリセットしました。次回ログイン時に再登録されます。", "success")
     return redirect(url_for("admin_dashboard"))
 
 
