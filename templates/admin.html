@@ -68,8 +68,8 @@
   <div class="card">
     <h1>当日分の代理注文(締切後の追加用)</h1>
     <p class="muted">締切後、社員・パートさんが当日9:00までに松浦さんか陽介さんへメモで「今日分お願いします」と伝えてきたときに、ここから代わりに登録できます。締切に関係なく登録できます。</p>
-    <form method="post" action="{{ url_for('admin_proxy_add_order') }}" class="grid-form">
-      <label>日付<input type="date" name="order_date" value="{{ today }}" required></label>
+    <form method="post" action="{{ url_for('admin_proxy_add_order') }}" class="grid-form" id="proxy-single-form">
+      <label>日付<input type="date" name="order_date" id="proxy-single-date" value="{{ today }}" required></label>
       <label>氏名
         <input type="text" name="employee_name" list="employee-list" required>
         <datalist id="employee-list">
@@ -77,12 +77,13 @@
         </datalist>
       </label>
       <label>区分
-        <select name="category" required>
+        <select name="category" id="proxy-single-category" required>
           {% for code in category_codes %}<option value="{{ code }}">{{ category_labels[code] }}</option>{% endfor %}
         </select>
       </label>
       <button type="submit" class="btn primary">登録</button>
     </form>
+    <p class="muted" id="proxy-single-nomenu" hidden>この日はまだメニューが登録されていません。先に「メニュー登録」タブで登録してください。</p>
   </div>
 
   <div class="card">
@@ -338,6 +339,39 @@
   }
   checks.forEach(function (c) { c.addEventListener('change', updateBulkBtn); });
   updateBulkBtn();
+})();
+</script>
+
+<script>
+(function () {
+  var dateInput = document.getElementById('proxy-single-date');
+  var select = document.getElementById('proxy-single-category');
+  var noMenuNote = document.getElementById('proxy-single-nomenu');
+  var submitBtn = document.querySelector('#proxy-single-form button[type=submit]');
+  if (!dateInput || !select) return;
+  var menuMap = {{ proxy_menu_map | tojson }};
+  var categoryLabels = {{ category_labels | tojson }};
+
+  function refresh() {
+    var menu = menuMap[dateInput.value] || {};
+    var anyAvailable = false;
+    Array.prototype.forEach.call(select.options, function (opt) {
+      var name = menu[opt.value];
+      if (name) {
+        opt.textContent = categoryLabels[opt.value] + ': ' + name;
+        opt.disabled = false;
+        anyAvailable = true;
+      } else {
+        opt.textContent = categoryLabels[opt.value] + '(メニュー未登録)';
+        opt.disabled = true;
+      }
+    });
+    noMenuNote.hidden = anyAvailable;
+    submitBtn.disabled = !anyAvailable;
+  }
+
+  dateInput.addEventListener('change', refresh);
+  refresh();
 })();
 </script>
 

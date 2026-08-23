@@ -511,6 +511,16 @@ def admin_dashboard():
     for row in menu_rows:
         menu_by_date.setdefault(row["item_date"], []).append(row)
 
+    # Plain-dict version of menu_by_date (date -> {category: dish name}) for
+    # the single-day proxy order form's JS: as the admin changes the date,
+    # the 区分 dropdown updates to show that day's actual dish name instead
+    # of just the category, so they can pick the same item the employee
+    # would have ("フライあり: 唐揚げ") rather than a bare category.
+    proxy_menu_map = {
+        d: {item["category"]: item["name"] for item in items}
+        for d, items in menu_by_date.items()
+    }
+
     raw_orders = db.execute(
         "SELECT o.*, m.category as category, m.name as dish_name "
         "FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
@@ -613,6 +623,7 @@ def admin_dashboard():
         category_labels=CATEGORY_LABELS,
         category_short=CATEGORY_SHORT,
         known_employees=known_employees,
+        proxy_menu_map=proxy_menu_map,
         weekday_labels=weekday_labels,
         week_deadlines=week_deadlines,
         proxy_weeks=proxy_weeks,
