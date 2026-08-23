@@ -170,10 +170,12 @@
           {% endfor %}
         </span>
         <span class="day-status" id="day-status-{{ order_date }}">
-          {% if unpaid_names %}
-          <span class="badge closed">{{ unpaid_names|join('・') }}さんのチケット回収がまだ</span>
-          {% else %}
+          {% if not unpaid_names %}
           <span class="badge open">全員確認済み</span>
+          {% elif unpaid_names|length == items|length %}
+          <span class="badge closed">全員まだ</span>
+          {% else %}
+          <span class="badge closed">{{ unpaid_names|join('・') }}さんのチケット回収がまだ</span>
           {% endif %}
         </span>
         <form method="post" action="{{ url_for('admin_mark_day_paid') }}" class="inline-form" style="margin:0;" onsubmit="return confirm('{{ order_date }}の注文を全員精算済みにしますか?');">
@@ -407,12 +409,15 @@
     var unpaidNames = [];
     boxes.forEach(function (b) { if (!b.checked) unpaidNames.push(b.dataset.employeeName); });
     var badge = document.createElement('span');
-    if (unpaidNames.length) {
-      badge.className = 'badge closed';
-      badge.textContent = unpaidNames.join('・') + 'さんのチケット回収がまだ';
-    } else {
+    if (!unpaidNames.length) {
       badge.className = 'badge open';
       badge.textContent = '全員確認済み';
+    } else if (unpaidNames.length === boxes.length) {
+      badge.className = 'badge closed';
+      badge.textContent = '全員まだ';
+    } else {
+      badge.className = 'badge closed';
+      badge.textContent = unpaidNames.join('・') + 'さんのチケット回収がまだ';
     }
     statusEl.innerHTML = '';
     statusEl.appendChild(badge);
