@@ -72,6 +72,12 @@ CATEGORY_SHORT = {"fry": "フライ有り", "nofry": "なし", "veg": "野菜"}
 WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
 
 
+@app.template_filter("weekday_jp")
+def weekday_jp_filter(date_str):
+    """Template filter: 'YYYY-MM-DD' -> '月'/'火'/... for display like 8/24(月)."""
+    return WEEKDAY_JP[date.fromisoformat(date_str).weekday()]
+
+
 # ---------- DB helpers ----------
 
 def get_db():

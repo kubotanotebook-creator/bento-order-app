@@ -57,147 +57,11 @@
 </div>
 
 <div class="admin-tabs" role="tablist">
-  <button type="button" class="tab-btn" data-tab="settings" role="tab">設定</button>
-  <button type="button" class="tab-btn" data-tab="summary" role="tab">集計サマリー</button>
-  <button type="button" class="tab-btn" data-tab="menu" role="tab">メニュー登録</button>
   <button type="button" class="tab-btn" data-tab="proxy" role="tab">代理注文</button>
+  <button type="button" class="tab-btn" data-tab="summary" role="tab">当日注文数確認</button>
   <button type="button" class="tab-btn" data-tab="orders" role="tab">注文一覧</button>
-</div>
-
-<div class="tab-panel" data-tab="settings">
-  <div class="card">
-    <h1>設定</h1>
-    <form method="post" action="{{ url_for('admin_update_settings') }}" class="grid-form">
-      <label>1食の価格(円)<input type="number" name="price" min="0" value="{{ settings.price }}" required></label>
-      <label>注文締切の曜日
-        <select name="cutoff_weekday">
-          {% for idx, label in weekday_labels %}
-            <option value="{{ idx }}" {% if settings.cutoff_weekday == idx %}selected{% endif %}>{{ label }}曜日</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>締切時刻<input type="time" name="cutoff_time" value="{{ settings.cutoff_time }}" required></label>
-      <button type="submit" class="btn primary">更新</button>
-    </form>
-    <p class="muted">締切は「注文対象の週の、前の週の設定曜日・時刻」です。例: 来週分の注文締切 = 今週の金曜15:00。この自動計算は基本ルールで、週ごとの例外は下の「週ごとの締切」で個別に設定できます。</p>
-  </div>
-
-  <div class="card">
-    <h1>週ごとの締切(手動設定)</h1>
-    <p class="muted">祝日などで自動計算どおりにならない週は、その週の締切日時をここで個別に上書きできます。メニューを登録したタイミングで、あわせて確認・設定しておくのがおすすめです。上書きしていない週は上の「設定」の自動計算がそのまま使われます。</p>
-    {% if week_deadlines %}
-    <div class="table-scroll">
-    <table class="table">
-      <thead><tr><th>週</th><th>締切日時</th><th>操作</th></tr></thead>
-      <tbody>
-        {% for wd in week_deadlines %}
-        <tr>
-          <td data-label="週">{{ wd.label }}{% if wd.is_override %} <span class="badge closed">手動設定</span>{% endif %}</td>
-          <td data-label="締切日時">
-            <form method="post" action="{{ url_for('admin_set_week_deadline') }}" class="inline-form">
-              <input type="hidden" name="monday" value="{{ wd.monday }}">
-              <input type="datetime-local" name="deadline_at" value="{{ wd.deadline_input }}" required style="margin-bottom:0;">
-              <button type="submit" class="btn small primary">保存</button>
-            </form>
-          </td>
-          <td data-label="操作">
-            {% if wd.is_override %}
-            <form method="post" action="{{ url_for('admin_reset_week_deadline') }}" onsubmit="return confirm('自動計算の締切に戻しますか?');">
-              <input type="hidden" name="monday" value="{{ wd.monday }}">
-              <button type="submit" class="btn small">自動計算に戻す</button>
-            </form>
-            {% else %}
-            <span class="muted" style="font-size:0.8rem;">自動計算</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% else %}
-    <p class="muted">メニューが登録されている週がありません。</p>
-    {% endif %}
-  </div>
-</div>
-
-<div class="tab-panel" data-tab="summary">
-  <div class="card">
-    <h1>集計サマリー(リリテイへの注文数の目安)</h1>
-    <p class="muted">日付をクリックすると内訳が開きます。本日の分は最初から開いています。</p>
-    {% for d, s in summary.items() %}
-    <div class="date-group">
-      <div class="date-group-header">
-        <button type="button" class="date-toggle-btn {{ 'is-today' if d == today }}" data-target="summary-{{ d }}">
-          <span class="chevron">▶</span> {{ d }}{% if d == today %} <span class="badge open">本日</span>{% endif %}
-        </button>
-        <span class="date-counts">
-          合計{{ s.count }}食
-          {% for code in category_codes %}{% if s.cat_counts.get(code) %}・{{ category_short[code] }}{{ s.cat_counts[code] }}{% endif %}{% endfor %}
-        </span>
-      </div>
-      <div class="date-group-body" id="summary-{{ d }}" hidden>
-        <ul>
-          {% for item_name, qty in s.item_counts.items() %}
-            <li>{{ item_name }}: {{ qty }} 食
-              <span class="muted" style="font-size:0.85rem;">({{ s.item_names[item_name] | join('、') }})</span>
-            </li>
-          {% endfor %}
-        </ul>
-      </div>
-    </div>
-    {% else %}
-    <p class="muted">まだ注文がありません。</p>
-    {% endfor %}
-  </div>
-</div>
-
-<div class="tab-panel" data-tab="menu">
-  <div class="card">
-    <h1>メニュー登録</h1>
-
-    <h3 style="margin-top:0;">PDFから一括読み込み</h3>
-    <form method="post" action="{{ url_for('admin_import_menu_pdf') }}" enctype="multipart/form-data" class="inline-form">
-      <input type="file" name="pdf_file" accept="application/pdf" required style="width:auto; margin-bottom:0;">
-      <button type="submit" class="btn primary">PDFを読み込む</button>
-    </form>
-    <p class="muted">リリテイの月間PDFをアップロードすると、日付ごとのメニューを自動で読み取ります。次の画面で内容を確認・修正してから登録するので、読み取りミスがあってもそのまま登録されることはありません。</p>
-
-    <h3>1日ずつ手入力</h3>
-    <form method="post" action="{{ url_for('admin_add_menu') }}" class="grid-form" id="menu-form">
-      <label>日付<input type="date" name="item_date" id="item_date_input" value="{{ today }}" required></label>
-      <label>フライあり<input type="text" name="name_fry" placeholder="例: 唐揚げ"></label>
-      <label>フライなし<input type="text" name="name_nofry" placeholder="例: 焼き魚"></label>
-      <label>やさい<input type="text" name="name_veg" placeholder="例: 野菜炒め"></label>
-      <button type="submit" class="btn primary">この日のメニューを登録</button>
-    </form>
-    <p class="muted">入力した項目だけ登録・上書きされます(空欄は無視されます)。登録すると、次回はこの日の翌営業日が自動で入力されます。</p>
-
-    {% for d, items in menu_by_date.items() %}
-    <div class="summary-block">
-      <h3>{{ d }}</h3>
-      <div class="table-scroll">
-      <table class="table">
-        <thead><tr><th>区分</th><th>メニュー名</th><th></th></tr></thead>
-        <tbody>
-        {% for item in items %}
-          <tr>
-            <td data-label="区分">{{ category_labels[item.category] }}</td>
-            <td data-label="メニュー名">{{ item.name }}</td>
-            <td data-label="">
-              <form method="post" action="{{ url_for('admin_delete_menu') }}" onsubmit="return confirm('削除しますか?');">
-                <input type="hidden" name="menu_item_id" value="{{ item.id }}">
-                <button type="submit" class="btn small">削除</button>
-              </form>
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      </div>
-    </div>
-    {% endfor %}
-  </div>
+  <button type="button" class="tab-btn" data-tab="menu" role="tab">メニュー登録</button>
+  <button type="button" class="tab-btn" data-tab="settings" role="tab">締め切り時間設定</button>
 </div>
 
 <div class="tab-panel" data-tab="proxy">
@@ -256,22 +120,61 @@
   </div>
 </div>
 
+<div class="tab-panel" data-tab="summary">
+  <div class="card">
+    <h1>当日注文数確認(リリテイへの注文数の目安)</h1>
+    <p class="muted">日付をクリックすると内訳が開きます。本日の分は最初から開いています。</p>
+    {% for d, s in summary.items() %}
+    <div class="date-group">
+      <div class="date-group-header">
+        <button type="button" class="date-toggle-btn {{ 'is-today' if d == today }}" data-target="summary-{{ d }}">
+          <span class="chevron">▶</span> {{ d }}({{ d|weekday_jp }}){% if d == today %} <span class="badge open">本日</span>{% endif %}
+        </button>
+        <span class="date-counts">
+          合計{{ s.count }}食
+          {% for code in category_codes %}{% if s.cat_counts.get(code) %}・{{ category_short[code] }}{{ s.cat_counts[code] }}{% endif %}{% endfor %}
+        </span>
+      </div>
+      <div class="date-group-body" id="summary-{{ d }}" hidden>
+        <ul>
+          {% for item_name, qty in s.item_counts.items() %}
+            <li>{{ item_name }}: {{ qty }} 食
+              <span class="muted" style="font-size:0.85rem;">({{ s.item_names[item_name] | join('、') }})</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% else %}
+    <p class="muted">まだ注文がありません。</p>
+    {% endfor %}
+  </div>
+</div>
+
 <div class="tab-panel" data-tab="orders">
   <div class="card">
     <h1>注文一覧</h1>
     <p class="muted">日付をクリックすると内訳が開きます。本日の分は最初から開いています。</p>
     {% for order_date, items in orders|groupby('order_date') %}
     {% set items = items|list %}
+    {% set unpaid_names = items|rejectattr('paid')|map(attribute='employee_name')|list %}
     <div class="date-group">
       <div class="date-group-header">
         <button type="button" class="date-toggle-btn {{ 'is-today' if order_date == today }}" data-target="orders-{{ order_date }}">
-          <span class="chevron">▶</span> {{ order_date }}{% if order_date == today %} <span class="badge open">本日</span>{% endif %}
+          <span class="chevron">▶</span> {{ order_date }}({{ order_date|weekday_jp }}){% if order_date == today %} <span class="badge open">本日</span>{% endif %}
         </button>
         <span class="date-counts">
           {% for code in category_codes %}
             {% set c = items|selectattr('category', 'equalto', code)|list|length %}
             {% if c %}{{ category_short[code] }}{{ c }}{% if not loop.last %}・{% endif %}{% endif %}
           {% endfor %}
+        </span>
+        <span class="day-status" id="day-status-{{ order_date }}">
+          {% if unpaid_names %}
+          <span class="badge closed">{{ unpaid_names|join('・') }}さんのチケット回収がまだ</span>
+          {% else %}
+          <span class="badge open">全員確認済み</span>
+          {% endif %}
         </span>
         <form method="post" action="{{ url_for('admin_mark_day_paid') }}" class="inline-form" style="margin:0;" onsubmit="return confirm('{{ order_date }}の注文を全員精算済みにしますか?');">
           <input type="hidden" name="order_date" value="{{ order_date }}">
@@ -290,7 +193,7 @@
               <td data-label="氏名">{{ o.employee_name }}</td>
               <td data-label="区分">{{ category_labels[o.category] }}</td>
               <td data-label="支払済">
-                <input type="checkbox" class="paid-toggle" data-order-id="{{ o.id }}" {% if o.paid %}checked{% endif %}>
+                <input type="checkbox" class="paid-toggle" data-order-id="{{ o.id }}" data-order-date="{{ order_date }}" data-employee-name="{{ o.employee_name }}" {% if o.paid %}checked{% endif %}>
               </td>
               <td data-label="操作">
                 <form method="post" action="{{ url_for('admin_cancel_order') }}" onsubmit="return confirm('この注文をキャンセルしますか?');">
@@ -308,6 +211,111 @@
     {% else %}
     <p class="muted">注文がありません。</p>
     {% endfor %}
+  </div>
+</div>
+
+<div class="tab-panel" data-tab="menu">
+  <div class="card">
+    <h1>メニュー登録</h1>
+
+    <h3 style="margin-top:0;">PDFから一括読み込み</h3>
+    <form method="post" action="{{ url_for('admin_import_menu_pdf') }}" enctype="multipart/form-data" class="inline-form">
+      <input type="file" name="pdf_file" accept="application/pdf" required style="width:auto; margin-bottom:0;">
+      <button type="submit" class="btn primary">PDFを読み込む</button>
+    </form>
+    <p class="muted">リリテイの月間PDFをアップロードすると、日付ごとのメニューを自動で読み取ります。次の画面で内容を確認・修正してから登録するので、読み取りミスがあってもそのまま登録されることはありません。</p>
+
+    <h3>1日ずつ手入力</h3>
+    <form method="post" action="{{ url_for('admin_add_menu') }}" class="grid-form" id="menu-form">
+      <label>日付<input type="date" name="item_date" id="item_date_input" value="{{ today }}" required></label>
+      <label>フライあり<input type="text" name="name_fry" placeholder="例: 唐揚げ"></label>
+      <label>フライなし<input type="text" name="name_nofry" placeholder="例: 焼き魚"></label>
+      <label>やさい<input type="text" name="name_veg" placeholder="例: 野菜炒め"></label>
+      <button type="submit" class="btn primary">この日のメニューを登録</button>
+    </form>
+    <p class="muted">入力した項目だけ登録・上書きされます(空欄は無視されます)。登録すると、次回はこの日の翌営業日が自動で入力されます。</p>
+
+    {% for d, items in menu_by_date.items() %}
+    <div class="summary-block">
+      <h3>{{ d }}</h3>
+      <div class="table-scroll">
+      <table class="table">
+        <thead><tr><th>区分</th><th>メニュー名</th><th></th></tr></thead>
+        <tbody>
+        {% for item in items %}
+          <tr>
+            <td data-label="区分">{{ category_labels[item.category] }}</td>
+            <td data-label="メニュー名">{{ item.name }}</td>
+            <td data-label="">
+              <form method="post" action="{{ url_for('admin_delete_menu') }}" onsubmit="return confirm('削除しますか?');">
+                <input type="hidden" name="menu_item_id" value="{{ item.id }}">
+                <button type="submit" class="btn small">削除</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="tab-panel" data-tab="settings">
+  <div class="card">
+    <h1>締め切り時間設定</h1>
+    <form method="post" action="{{ url_for('admin_update_settings') }}" class="grid-form">
+      <label>1食の価格(円)<input type="number" name="price" min="0" value="{{ settings.price }}" required></label>
+      <label>注文締切の曜日
+        <select name="cutoff_weekday">
+          {% for idx, label in weekday_labels %}
+            <option value="{{ idx }}" {% if settings.cutoff_weekday == idx %}selected{% endif %}>{{ label }}曜日</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>締切時刻<input type="time" name="cutoff_time" value="{{ settings.cutoff_time }}" required></label>
+      <button type="submit" class="btn primary">更新</button>
+    </form>
+    <p class="muted">締切は「注文対象の週の、前の週の設定曜日・時刻」です。例: 来週分の注文締切 = 今週の金曜15:00。この自動計算は基本ルールで、週ごとの例外は下の「週ごとの締切」で個別に設定できます。</p>
+  </div>
+
+  <div class="card">
+    <h1>週ごとの締切(手動設定)</h1>
+    <p class="muted">祝日などで自動計算どおりにならない週は、その週の締切日時をここで個別に上書きできます。メニューを登録したタイミングで、あわせて確認・設定しておくのがおすすめです。上書きしていない週は上の「設定」の自動計算がそのまま使われます。</p>
+    {% if week_deadlines %}
+    <div class="table-scroll">
+    <table class="table">
+      <thead><tr><th>週</th><th>締切日時</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for wd in week_deadlines %}
+        <tr>
+          <td data-label="週">{{ wd.label }}{% if wd.is_override %} <span class="badge closed">手動設定</span>{% endif %}</td>
+          <td data-label="締切日時">
+            <form method="post" action="{{ url_for('admin_set_week_deadline') }}" class="inline-form">
+              <input type="hidden" name="monday" value="{{ wd.monday }}">
+              <input type="datetime-local" name="deadline_at" value="{{ wd.deadline_input }}" required style="margin-bottom:0;">
+              <button type="submit" class="btn small primary">保存</button>
+            </form>
+          </td>
+          <td data-label="操作">
+            {% if wd.is_override %}
+            <form method="post" action="{{ url_for('admin_reset_week_deadline') }}" onsubmit="return confirm('自動計算の締切に戻しますか?');">
+              <input type="hidden" name="monday" value="{{ wd.monday }}">
+              <button type="submit" class="btn small">自動計算に戻す</button>
+            </form>
+            {% else %}
+            <span class="muted" style="font-size:0.8rem;">自動計算</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="muted">メニューが登録されている週がありません。</p>
+    {% endif %}
   </div>
 </div>
 
@@ -392,6 +400,24 @@
 
 <script>
 (function () {
+  function updateDayStatus(orderDate) {
+    var statusEl = document.getElementById('day-status-' + orderDate);
+    if (!statusEl) return;
+    var boxes = document.querySelectorAll('.paid-toggle[data-order-date="' + orderDate + '"]');
+    var unpaidNames = [];
+    boxes.forEach(function (b) { if (!b.checked) unpaidNames.push(b.dataset.employeeName); });
+    var badge = document.createElement('span');
+    if (unpaidNames.length) {
+      badge.className = 'badge closed';
+      badge.textContent = unpaidNames.join('・') + 'さんのチケット回収がまだ';
+    } else {
+      badge.className = 'badge open';
+      badge.textContent = '全員確認済み';
+    }
+    statusEl.innerHTML = '';
+    statusEl.appendChild(badge);
+  }
+
   document.querySelectorAll('.paid-toggle').forEach(function (cb) {
     cb.addEventListener('change', function () {
       var id = cb.dataset.orderId;
@@ -400,6 +426,8 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'order_id=' + encodeURIComponent(id)
+      }).then(function () {
+        updateDayStatus(cb.dataset.orderDate);
       }).catch(function () {
         cb.checked = !wasChecked;
         alert('通信エラーが発生しました。もう一度お試しください。');
