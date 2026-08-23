@@ -471,6 +471,35 @@ def order_week():
     return redirect(url_for("index"))
 
 
+@app.route("/order/cancel-day", methods=["POST"])
+def order_cancel_day():
+    """Let an employee cancel their own order for a future day even after
+    that week's ordering deadline has passed. Only cancellation is allowed
+    post-deadline (not adding or switching) — a brand-new order past the
+    deadline still needs the admin's proxy-order flow, since that's what
+    coordinates the headcount with リリテイ. Same-day changes still go
+    through the admin's morning process, so "today" is deliberately excluded
+    here (order_date must be strictly after today)."""
+    employee_name = session.get("employee_name")
+    if not employee_name:
+        return redirect(url_for("index"))
+
+    order_date = request.form.get("order_date", "")
+    if order_date <= today_jst().isoformat():
+        return redirect(url_for("index"))
+
+    db = get_db()
+    existing = db.execute(
+        "SELECT * FROM orders WHERE employee_name = ? AND order_date = ? AND status = 'ordered'",
+        (employee_name, order_date),
+    ).fetchone()
+    if existing:
+        db.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (existing["id"],))
+        db.commit()
+        flash(f"{order_date} の注文をキャンセルしました。", "success")
+    return redirect(url_for("index"))
+
+
 @app.route("/my-orders")
 def my_orders():
     employee_name = session.get("employee_name")
