@@ -76,18 +76,6 @@
     padding: 1px 3px;
     font-size: 0.58rem;
   }
-  .ticket-check {
-    margin-top: 2px;
-    padding-top: 2px;
-    border-top: 1px dashed #999;
-    font-size: 0.56rem;
-    color: #444;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 4px;
-  }
-  .ticket-check .pickup-box { width: 11px; height: 11px; }
   table.matrix tr.blank-row td { height: 28px; }
   /* Zebra striping + a heavier line under every row: rows are wide (5 day
      columns), so it's easy for the eye to slip onto a neighboring person's
@@ -182,7 +170,6 @@
                 {% endif %}
               {% endfor %}
             </div>
-            <div class="ticket-check">届いたチケット数と照合<span class="pickup-box"></span></div>
             {% endif %}
           </th>
           {% endfor %}
