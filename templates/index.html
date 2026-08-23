@@ -82,16 +82,18 @@
       <div class="day-choices">
         {% for code in category_codes %}
           {% if code in day.cats %}
-          <label>
+          <label class="{{ code }}">
             <input type="radio" name="day_{{ day.date }}" value="{{ code }}"
               {% if day.selected_code == code %}checked{% endif %}>
+            <span class="choice-dot {{ code }}"></span>
             <span>{{ category_labels[code] }}: {{ day.cats[code].name }}</span>
           </label>
           {% endif %}
         {% endfor %}
-        <label>
+        <label class="none">
           <input type="radio" name="day_{{ day.date }}" value="none"
             {% if not day.selected_code %}checked{% endif %}>
+          <span class="choice-dot none"></span>
           <span>注文しない</span>
         </label>
       </div>

@@ -149,12 +149,25 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
   background: #fff;
 }
 .day-choices input[type=radio] { margin: 0; }
-.day-choices label:has(input:checked) {
-  background: #fff3e9;
-  border-color: #d9480f;
-  color: #d9480f;
-  font-weight: 700;
+.choice-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
 }
+.choice-dot.fry { background: #d9480f; }
+.choice-dot.nofry { background: #7048e8; }
+.choice-dot.veg { background: #2f9e44; }
+.choice-dot.none { background: transparent; border: 2px dashed #bbb; }
+/* Each category highlights in its own color when selected (not a uniform
+   orange for every option), matching the color language used everywhere
+   else in the app (week glance, print sheets) — reduces mis-picks caused
+   by everything looking the same until you read the text carefully. */
+.day-choices label.fry:has(input:checked) { background: #fff3e9; border-color: #d9480f; color: #d9480f; font-weight: 700; }
+.day-choices label.nofry:has(input:checked) { background: #f2eefd; border-color: #7048e8; color: #7048e8; font-weight: 700; }
+.day-choices label.veg:has(input:checked) { background: #eaf7ed; border-color: #2f9e44; color: #2f9e44; font-weight: 700; }
+.day-choices label.none:has(input:checked) { background: #f2f2f2; border-color: #999; color: #666; font-weight: 700; }
 
 /* Weekly at-a-glance strip — mimics the paper board's "one row of circles
    per week" so employees can see their whole week's choices in one look. */
