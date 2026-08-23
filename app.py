@@ -639,6 +639,40 @@ def admin_dashboard():
     cancel_requests = [o for o in orders if o["cancel_requested_at"]]
     cancel_requests.sort(key=lambda o: o["cancel_requested_at"])
 
+    # 注文一覧 tab: today always leads, future days follow in their own
+    # date groups (soonest first), and everything before today is tucked
+    # away under collapsed month groups — otherwise months of history pile
+    # up above the dates anyone actually still cares about.
+    orders_by_date = {}
+    for o in orders:
+        orders_by_date.setdefault(o["order_date"], []).append(o)
+
+    today_order_items = orders_by_date.pop(today_str, [])
+    future_dates = sorted(d for d in orders_by_date if d > today_str)
+    past_dates = sorted((d for d in orders_by_date if d < today_str), reverse=True)
+
+    # Note: dict key is "day_orders", not "items" — a dict has its own
+    # builtin .items() method, which Jinja's dot-notation would resolve
+    # before falling back to a same-named dict key, silently breaking
+    # `day.items` in the template.
+    future_date_groups = [{"date": d, "day_orders": orders_by_date[d]} for d in future_dates]
+
+    past_months = []
+    current_month = None
+    for d in past_dates:
+        month_key = d[:7]
+        if current_month is None or current_month["month_key"] != month_key:
+            current_month = {
+                "month_key": month_key,
+                "label": f"{int(month_key[:4])}年{int(month_key[5:7])}月",
+                "dates": [],
+                "count": 0,
+            }
+            past_months.append(current_month)
+        day_orders = orders_by_date[d]
+        current_month["dates"].append({"date": d, "day_orders": day_orders})
+        current_month["count"] += sum(o["quantity"] for o in day_orders)
+
     summary = {}
     for o in orders:
         d = o["order_date"]
@@ -728,6 +762,9 @@ def admin_dashboard():
         menu_by_date=menu_by_date,
         orders=orders,
         cancel_requests=cancel_requests,
+        today_order_items=today_order_items,
+        future_date_groups=future_date_groups,
+        past_months=past_months,
         today_orders=today_orders,
         check_date=check_date_str,
         check_date_weekday=check_date_weekday,

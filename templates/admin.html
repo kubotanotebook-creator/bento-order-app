@@ -210,67 +210,93 @@
   </div>
 </div>
 
+{% macro order_date_group(order_date, items, is_today=False) %}
+  {% set unpaid_names = items|rejectattr('paid')|map(attribute='employee_name')|list %}
+  <div class="date-group">
+    <div class="date-group-header">
+      <button type="button" class="date-toggle-btn {{ 'is-today' if is_today }}" data-target="orders-{{ order_date }}">
+        <span class="chevron">▶</span> {{ order_date }}({{ order_date|weekday_jp }}){% if is_today %} <span class="badge open">本日</span>{% endif %}
+      </button>
+      <span class="date-counts">
+        {% for code in category_codes %}
+          {% set c = items|selectattr('category', 'equalto', code)|list|length %}
+          {% if c %}{{ category_short[code] }}{{ c }}{% if not loop.last %}・{% endif %}{% endif %}
+        {% endfor %}
+      </span>
+      <span class="day-status" id="day-status-{{ order_date }}">
+        {% if not unpaid_names %}
+        <span class="badge open">全員確認済み</span>
+        {% elif unpaid_names|length == items|length %}
+        <span class="badge closed">全員まだ</span>
+        {% else %}
+        <span class="badge closed">{{ unpaid_names|join('・') }}さんのチケット回収がまだ</span>
+        {% endif %}
+      </span>
+      <form method="post" action="{{ url_for('admin_mark_day_paid') }}" class="inline-form" style="margin:0;" onsubmit="return confirm('{{ order_date }}の注文を全員精算済みにしますか?');">
+        <input type="hidden" name="order_date" value="{{ order_date }}">
+        <button type="submit" class="btn small">全員精算済み</button>
+      </form>
+    </div>
+    <div class="date-group-body" id="orders-{{ order_date }}" hidden>
+      <div class="table-scroll">
+      <table class="table">
+        <thead>
+          <tr><th>氏名</th><th>区分</th><th>支払済</th><th>操作</th></tr>
+        </thead>
+        <tbody>
+          {% for o in items %}
+          <tr>
+            <td data-label="氏名">{{ o.employee_name }}{% if o.cancel_requested_at %} <span class="badge closed">キャンセル希望</span>{% endif %}</td>
+            <td data-label="区分">{{ category_labels[o.category] }}</td>
+            <td data-label="支払済">
+              <input type="checkbox" class="paid-toggle" data-order-id="{{ o.id }}" data-order-date="{{ order_date }}" data-employee-name="{{ o.employee_name }}" {% if o.paid %}checked{% endif %}>
+            </td>
+            <td data-label="操作">
+              <form method="post" action="{{ url_for('admin_cancel_order') }}" onsubmit="return confirm('この注文をキャンセルしますか?');">
+                <input type="hidden" name="order_id" value="{{ o.id }}">
+                <button type="submit" class="btn small">キャンセル</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+
 <div class="tab-panel" data-tab="orders">
   <div class="card">
     <h1>注文一覧</h1>
-    <p class="muted">日付をクリックすると内訳が開きます。本日の分は最初から開いています。</p>
-    {% for order_date, items in orders|groupby('order_date') %}
-    {% set items = items|list %}
-    {% set unpaid_names = items|rejectattr('paid')|map(attribute='employee_name')|list %}
+    <p class="muted">日付をクリックすると内訳が開きます。本日の分は最初から開いています。過ぎた日付は月ごとにまとめてあるので、見たい月をクリックして開いてください。</p>
+
+    {% if today_order_items %}
+      {{ order_date_group(today, today_order_items, is_today=True) }}
+    {% endif %}
+
+    {% for day in future_date_groups %}
+      {{ order_date_group(day.date, day.day_orders) }}
+    {% endfor %}
+
+    {% if not today_order_items and not future_date_groups and not past_months %}
+    <p class="muted">注文がありません。</p>
+    {% endif %}
+
+    {% for month in past_months %}
     <div class="date-group">
       <div class="date-group-header">
-        <button type="button" class="date-toggle-btn {{ 'is-today' if order_date == today }}" data-target="orders-{{ order_date }}">
-          <span class="chevron">▶</span> {{ order_date }}({{ order_date|weekday_jp }}){% if order_date == today %} <span class="badge open">本日</span>{% endif %}
+        <button type="button" class="date-toggle-btn" data-target="month-{{ month.month_key }}">
+          <span class="chevron">▶</span> {{ month.label }}
         </button>
-        <span class="date-counts">
-          {% for code in category_codes %}
-            {% set c = items|selectattr('category', 'equalto', code)|list|length %}
-            {% if c %}{{ category_short[code] }}{{ c }}{% if not loop.last %}・{% endif %}{% endif %}
-          {% endfor %}
-        </span>
-        <span class="day-status" id="day-status-{{ order_date }}">
-          {% if not unpaid_names %}
-          <span class="badge open">全員確認済み</span>
-          {% elif unpaid_names|length == items|length %}
-          <span class="badge closed">全員まだ</span>
-          {% else %}
-          <span class="badge closed">{{ unpaid_names|join('・') }}さんのチケット回収がまだ</span>
-          {% endif %}
-        </span>
-        <form method="post" action="{{ url_for('admin_mark_day_paid') }}" class="inline-form" style="margin:0;" onsubmit="return confirm('{{ order_date }}の注文を全員精算済みにしますか?');">
-          <input type="hidden" name="order_date" value="{{ order_date }}">
-          <button type="submit" class="btn small">全員精算済み</button>
-        </form>
+        <span class="date-counts">合計{{ month.count }}食</span>
       </div>
-      <div class="date-group-body" id="orders-{{ order_date }}" hidden>
-        <div class="table-scroll">
-        <table class="table">
-          <thead>
-            <tr><th>氏名</th><th>区分</th><th>支払済</th><th>操作</th></tr>
-          </thead>
-          <tbody>
-            {% for o in items %}
-            <tr>
-              <td data-label="氏名">{{ o.employee_name }}{% if o.cancel_requested_at %} <span class="badge closed">キャンセル希望</span>{% endif %}</td>
-              <td data-label="区分">{{ category_labels[o.category] }}</td>
-              <td data-label="支払済">
-                <input type="checkbox" class="paid-toggle" data-order-id="{{ o.id }}" data-order-date="{{ order_date }}" data-employee-name="{{ o.employee_name }}" {% if o.paid %}checked{% endif %}>
-              </td>
-              <td data-label="操作">
-                <form method="post" action="{{ url_for('admin_cancel_order') }}" onsubmit="return confirm('この注文をキャンセルしますか?');">
-                  <input type="hidden" name="order_id" value="{{ o.id }}">
-                  <button type="submit" class="btn small">キャンセル</button>
-                </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        </div>
+      <div class="date-group-body" id="month-{{ month.month_key }}" hidden>
+        {% for day in month.dates %}
+          {{ order_date_group(day.date, day.day_orders) }}
+        {% endfor %}
       </div>
     </div>
-    {% else %}
-    <p class="muted">注文がありません。</p>
     {% endfor %}
   </div>
 </div>
