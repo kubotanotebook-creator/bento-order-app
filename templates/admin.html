@@ -56,6 +56,37 @@
   {% endif %}
 </div>
 
+{% if cancel_requests %}
+<div class="card">
+  <h1>キャンセル希望が届いています({{ cancel_requests|length }}件)</h1>
+  <p class="muted">締切後に社員本人がアプリから送ったキャンセル希望です。承認すると正式にキャンセルされます。週の紙のチェック表をすでに印刷済みの場合は、承認とあわせて紙の方も手書きで訂正してください。</p>
+  <div class="table-scroll">
+  <table class="table">
+    <thead><tr><th>日付</th><th>氏名</th><th>区分</th><th>操作</th></tr></thead>
+    <tbody>
+      {% for o in cancel_requests %}
+      <tr>
+        <td data-label="日付">{{ o.order_date }}({{ o.order_date|weekday_jp }})</td>
+        <td data-label="氏名">{{ o.employee_name }}</td>
+        <td data-label="区分">{{ o.item_display }}</td>
+        <td data-label="操作">
+          <form method="post" action="{{ url_for('admin_approve_cancel_request') }}" class="inline-form" style="margin:0;" onsubmit="return confirm('{{ o.employee_name }}さんの{{ o.order_date }}の注文をキャンセルしますか?');">
+            <input type="hidden" name="order_id" value="{{ o.id }}">
+            <button type="submit" class="btn small primary">承認してキャンセル</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_reject_cancel_request') }}" class="inline-form" style="margin:0;" onsubmit="return confirm('{{ o.employee_name }}さんのキャンセル希望を却下しますか?(注文はそのまま残ります)');">
+            <input type="hidden" name="order_id" value="{{ o.id }}">
+            <button type="submit" class="btn small">却下</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
 <div class="admin-tabs" role="tablist">
   <button type="button" class="tab-btn" data-tab="proxy" role="tab">代理注文</button>
   <button type="button" class="tab-btn" data-tab="summary" role="tab">当日注文数確認</button>
@@ -220,7 +251,7 @@
           <tbody>
             {% for o in items %}
             <tr>
-              <td data-label="氏名">{{ o.employee_name }}</td>
+              <td data-label="氏名">{{ o.employee_name }}{% if o.cancel_requested_at %} <span class="badge closed">キャンセル希望</span>{% endif %}</td>
               <td data-label="区分">{{ category_labels[o.category] }}</td>
               <td data-label="支払済">
                 <input type="checkbox" class="paid-toggle" data-order-id="{{ o.id }}" data-order-date="{{ order_date }}" data-employee-name="{{ o.employee_name }}" {% if o.paid %}checked{% endif %}>

@@ -177,6 +177,17 @@ def init_db():
             "重複防止インデックスを作成できませんでした。管理画面で重複を解消してください。",
             file=sys.stderr,
         )
+
+    # Employee-requested cancellations (for orders past that week's deadline)
+    # don't cancel immediately — the admin approves them, since the weekly
+    # paper checklist is already printed by then and only the admin can keep
+    # it in sync. NULL = no pending request.
+    try:
+        db.execute("ALTER TABLE orders ADD COLUMN cancel_requested_at TEXT")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
     db.close()
 
 
@@ -313,8 +324,11 @@ def index():
         (employee_name, today.isoformat()),
     ).fetchall()
     my_selection = {}  # order_date -> menu_item_id
+    my_cancel_requested = set()  # order_dates with a pending cancel request
     for o in my_orders:
         my_selection[o["order_date"]] = o["menu_item_id"]
+        if o["cancel_requested_at"]:
+            my_cancel_requested.add(o["order_date"])
 
     # Quick at-a-glance status for the next couple of business days, shown at
     # the very top of the page so it's visible no matter why someone opened
@@ -363,6 +377,7 @@ def index():
                 "weekday": WEEKDAY_JP[d.weekday()],
                 "cats": cats,
                 "selected_code": selected_code,
+                "cancel_requested": d_str in my_cancel_requested,
                 "is_past": d < today,
                 "is_today": d == today,
             })
@@ -473,13 +488,14 @@ def order_week():
 
 @app.route("/order/cancel-day", methods=["POST"])
 def order_cancel_day():
-    """Let an employee cancel their own order for a future day even after
-    that week's ordering deadline has passed. Only cancellation is allowed
-    post-deadline (not adding or switching) — a brand-new order past the
-    deadline still needs the admin's proxy-order flow, since that's what
-    coordinates the headcount with リリテイ. Same-day changes still go
-    through the admin's morning process, so "today" is deliberately excluded
-    here (order_date must be strictly after today)."""
+    """Let an employee flag their own order for a future day as "please
+    cancel", even after that week's ordering deadline has passed. This
+    doesn't cancel right away — the admin approves it from the dashboard —
+    because by the time the deadline has passed, the admin has usually
+    already printed that week's paper checklist, and a silent in-app
+    cancellation would leave the paper out of sync with reality. Same-day
+    changes still go through the admin's morning process, so "today" is
+    deliberately excluded here (order_date must be strictly after today)."""
     employee_name = session.get("employee_name")
     if not employee_name:
         return redirect(url_for("index"))
@@ -494,9 +510,12 @@ def order_cancel_day():
         (employee_name, order_date),
     ).fetchone()
     if existing:
-        db.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (existing["id"],))
+        db.execute(
+            "UPDATE orders SET cancel_requested_at = ? WHERE id = ?",
+            (now_jst().isoformat(), existing["id"]),
+        )
         db.commit()
-        flash(f"{order_date} の注文をキャンセルしました。", "success")
+        flash(f"{order_date} のキャンセル希望を送信しました。松浦さんか陽介さんが確認後、正式にキャンセルされます。", "success")
     return redirect(url_for("index"))
 
 
@@ -614,6 +633,12 @@ def admin_dashboard():
         row["item_display"] = item_display_name(r["category"], r["dish_name"])
         orders.append(row)
 
+    # Employee-submitted "please cancel" requests, waiting for the admin to
+    # approve — surfaced up top so they're seen regardless of which tab is
+    # open or whether that date's group happens to be collapsed.
+    cancel_requests = [o for o in orders if o["cancel_requested_at"]]
+    cancel_requests.sort(key=lambda o: o["cancel_requested_at"])
+
     summary = {}
     for o in orders:
         d = o["order_date"]
@@ -702,6 +727,7 @@ def admin_dashboard():
         "admin.html",
         menu_by_date=menu_by_date,
         orders=orders,
+        cancel_requests=cancel_requests,
         today_orders=today_orders,
         check_date=check_date_str,
         check_date_weekday=check_date_weekday,
@@ -987,6 +1013,40 @@ def admin_cancel_order():
     db.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (request.form.get("order_id"),))
     db.commit()
     flash("注文をキャンセルしました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/orders/approve-cancel", methods=["POST"])
+def admin_approve_cancel_request():
+    """Fulfil an employee's self-service cancellation request: actually
+    cancels the order. Left as a separate step from the employee's request
+    (rather than auto-cancelling) so the admin notices it and can update the
+    already-printed paper checklist at the same time."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute(
+        "UPDATE orders SET status = 'cancelled', cancel_requested_at = NULL WHERE id = ?",
+        (request.form.get("order_id"),),
+    )
+    db.commit()
+    flash("キャンセル希望を承認し、注文をキャンセルしました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/orders/reject-cancel", methods=["POST"])
+def admin_reject_cancel_request():
+    """Dismiss an employee's cancellation request without cancelling the
+    order (e.g. the admin already confirmed with them it's not needed)."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute(
+        "UPDATE orders SET cancel_requested_at = NULL WHERE id = ?",
+        (request.form.get("order_id"),),
+    )
+    db.commit()
+    flash("キャンセル希望を却下しました(注文はそのまま残っています)。", "success")
     return redirect(url_for("admin_dashboard"))
 
 

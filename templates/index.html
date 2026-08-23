@@ -26,7 +26,7 @@
   <h1>お弁当注文(1食 ¥{{ price }})</h1>
   <ul class="muted notice-list">
     <li>締切: 注文する週の前週 金曜15:00(週により変わる場合あり)</li>
-    <li>締切後でも、当日を迎える前ならご自身でキャンセルできます(下の「この日の注文をキャンセルする」)</li>
+    <li>締切後でも、当日を迎える前ならキャンセルを希望できます(下の「この日のキャンセルを希望する」。松浦さん・陽介さんの確認後に正式キャンセルとなります)</li>
     <li>当日の追加・変更: 当日9:00までに松浦さんか陽介さんへメモで</li>
   </ul>
   <div class="glance-legend">
@@ -108,10 +108,12 @@
       <div class="day-title">{{ day.date }}({{ day.weekday }})</div>
       {% if day.selected_code %}
         <div class="muted">選択中: {{ category_labels[day.selected_code] }}({{ day.cats[day.selected_code].name }})</div>
-        {% if not day.is_today and not day.is_past %}
-        <form method="post" action="{{ url_for('order_cancel_day') }}" class="inline-form" style="margin-top:4px;" onsubmit="return confirm('{{ day.date }}の注文をキャンセルしますか?');">
+        {% if day.cancel_requested %}
+        <p class="muted" style="margin-top:4px;">キャンセル希望を送信済みです(松浦さん・陽介さんの確認待ち)</p>
+        {% elif not day.is_today and not day.is_past %}
+        <form method="post" action="{{ url_for('order_cancel_day') }}" class="inline-form" style="margin-top:4px;" onsubmit="return confirm('{{ day.date }}のキャンセルを希望しますか?松浦さんか陽介さんが確認後、正式にキャンセルされます。');">
           <input type="hidden" name="order_date" value="{{ day.date }}">
-          <button type="submit" class="btn small">この日の注文をキャンセルする</button>
+          <button type="submit" class="btn small">この日のキャンセルを希望する</button>
         </form>
         {% endif %}
       {% else %}
