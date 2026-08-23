@@ -69,6 +69,10 @@ def today_jst():
 CATEGORY_CODES = ["fry", "nofry", "veg"]
 CATEGORY_LABELS = {"fry": "フライあり", "nofry": "フライなし", "veg": "やさい"}
 CATEGORY_SHORT = {"fry": "フライ有り", "nofry": "なし", "veg": "野菜"}
+# Even shorter than CATEGORY_SHORT, for squeezing a per-day count badge
+# (e.g. "フライ2") into the narrow weekly print sheet's day-column header
+# without the label pushing the number outside the colored badge.
+CATEGORY_PRINT_SHORT = {"fry": "フライ", "nofry": "なし", "veg": "野菜"}
 WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
 
 
@@ -1112,6 +1116,7 @@ def admin_print_checklist_week():
         category_codes=CATEGORY_CODES,
         category_labels=CATEGORY_LABELS,
         category_short=CATEGORY_SHORT,
+        category_print_short=CATEGORY_PRINT_SHORT,
     )
 
 

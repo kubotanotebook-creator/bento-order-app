@@ -49,7 +49,7 @@
     margin-bottom: 5px;
   }
 
-  table.matrix { width: 100%; border-collapse: collapse; }
+  table.matrix { width: 100%; border-collapse: collapse; table-layout: fixed; }
   table.matrix th, table.matrix td {
     border: 1px solid #999;
     padding: 2px 3px;
@@ -70,7 +70,12 @@
     overflow-wrap: anywhere;
   }
   table.matrix .day-count { font-size: 0.68rem; color: #666; font-weight: normal; }
-  .day-summary { margin-top: 3px; display: flex; justify-content: center; gap: 3px; flex-wrap: wrap; }
+  .day-summary { margin-top: 3px; display: flex; justify-content: center; gap: 2px; flex-wrap: nowrap; }
+  .cat-dot.day-cat-badge {
+    width: auto;
+    padding: 1px 3px;
+    font-size: 0.58rem;
+  }
   .ticket-check {
     margin-top: 2px;
     padding-top: 2px;
@@ -173,7 +178,7 @@
             <div class="day-summary">
               {% for code in category_codes %}
                 {% if day.cat_counts.get(code) %}
-                <span class="cat-dot {{ code }}">{{ category_short[code] }}{{ day.cat_counts[code] }}</span>
+                <span class="cat-dot day-cat-badge {{ code }}">{{ category_print_short[code] }}{{ day.cat_counts[code] }}</span>
                 {% endif %}
               {% endfor %}
             </div>
