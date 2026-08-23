@@ -126,7 +126,32 @@ python3 app.py
    現在は名前を自己申告するだけの簡易ログインです。なりすまし防止が必要な場合は、社内SSOとの連携や、社員ごとのID/パスワード方式への変更を検討してください。
 
 4. **バックアップ**
-   データは `bento.db` という1つのSQLiteファイルに保存されます。定期的にバックアップを取ることをおすすめします。
+   データは `bento.db` という1つのSQLiteファイルに保存されます。このファイルが失われると、注文履歴と支払い(チケット回収)の記録がまとめて消えます。`backup_db.py` で定期バックアップを取ってください。
+
+   ```bash
+   python3 backup_db.py
+   ```
+
+   実行すると `backups/bento-YYYY-MM-DD_HHMM.db.gz` が作られ、古い世代は自動で削除されます(既定30世代)。稼働中でも安全にコピーできるよう、SQLite公式のバックアップAPIでスナップショットを取ってから圧縮しています。
+
+   環境変数で調整できます。
+
+   | 変数 | 既定値 | 説明 |
+   |---|---|---|
+   | `BENTO_BACKUP_DIR` | DBと同じ場所の `backups/` | 保存先 |
+   | `BENTO_BACKUP_KEEP` | `30` | 残す世代数 |
+
+   **PythonAnywhere で自動実行する場合**: 「Tasks」タブで以下を毎日実行するよう登録します(無料プランでも1日1回のタスクが使えます)。
+
+   ```bash
+   python3 /home/<ユーザー名>/bento-order-app/backup_db.py
+   ```
+
+   **復元する方法**: 圧縮を解いて `bento.db` に戻すだけです(戻す前に現物を退避しておくと安全)。
+
+   ```bash
+   gunzip -c backups/bento-2026-08-24_0300.db.gz > bento.db
+   ```
 
 ## ディレクトリ構成
 
@@ -134,6 +159,7 @@ python3 app.py
 bento-app/
 ├── app.py               # Flaskアプリ本体(ルーティング・DB操作)
 ├── menu_pdf_parser.py   # リリテイの月間PDFを解析するモジュール
+├── backup_db.py         # bento.db の定期バックアップ(圧縮・世代管理)
 ├── requirements.txt     # 依存パッケージ
 ├── start_app.bat        # Windows用: ダブルクリックでサーバー起動+ブラウザを開く
 ├── templates/           # HTMLテンプレート
