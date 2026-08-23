@@ -1,6 +1,8 @@
 import os
+import sys
 import sqlite3
 from datetime import datetime, date, time, timedelta
+from zoneinfo import ZoneInfo
 from flask import Flask, g, request, session, redirect, url_for, render_template, flash
 
 from menu_pdf_parser import parse_menu_pdf
@@ -11,9 +13,53 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("BENTO_DB_PATH", os.path.join(BASE_DIR, "bento.db"))
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("BENTO_SECRET_KEY", "dev-secret-change-me")
-ADMIN_PASSWORD = os.environ.get("BENTO_ADMIN_PASSWORD", "admin123")
+DEFAULT_SECRET_KEY = "dev-secret-change-me"
+DEFAULT_ADMIN_PASSWORD = "admin123"
+app.secret_key = os.environ.get("BENTO_SECRET_KEY", DEFAULT_SECRET_KEY)
+ADMIN_PASSWORD = os.environ.get("BENTO_ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD)
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20MB upload cap
+
+# Fail-fast against shipping the built-in default secret key / admin password.
+# A known secret key lets anyone forge an "is_admin" session cookie, and the
+# default admin password is public in this repo — either one in production is a
+# real hole. We treat "$PORT is set" as the production signal (that's how the
+# Procfile binds gunicorn on Cloud Run / Render / Heroku); local `python app.py`
+# has no $PORT, so it only warns and still runs. Set BENTO_ALLOW_DEFAULT_SECRETS=1
+# to override intentionally (e.g. a throwaway internal demo).
+_using_default_secrets = (
+    app.secret_key == DEFAULT_SECRET_KEY or ADMIN_PASSWORD == DEFAULT_ADMIN_PASSWORD
+)
+if _using_default_secrets:
+    _warning = (
+        "BENTO_SECRET_KEY / BENTO_ADMIN_PASSWORD がデフォルトのままです。"
+        "本番では必ず環境変数で設定してください。"
+    )
+    _in_production = bool(os.environ.get("PORT"))
+    _allow_defaults = os.environ.get("BENTO_ALLOW_DEFAULT_SECRETS") == "1"
+    if _in_production and not _allow_defaults:
+        raise RuntimeError(
+            "本番起動を中止しました（デフォルトの秘密鍵/管理者パスワードのままです）。"
+            + _warning
+            + " どうしても既定値で起動する場合のみ BENTO_ALLOW_DEFAULT_SECRETS=1 を設定してください。"
+        )
+    print("WARNING: " + _warning, file=sys.stderr)
+
+# All date/time logic is pinned to JST regardless of the server's own timezone.
+# PaaS hosts (Cloud Run, Render, ...) run in UTC, which would otherwise shift
+# every deadline by 9 hours. We work in *naive* datetimes that represent JST
+# wall-clock time, so they stay directly comparable with the naive datetimes
+# stored in the DB (deadlines, created_at).
+JST = ZoneInfo("Asia/Tokyo")
+
+
+def now_jst():
+    """Current JST wall-clock time as a naive datetime."""
+    return datetime.now(JST).replace(tzinfo=None)
+
+
+def today_jst():
+    """Today's date in JST."""
+    return datetime.now(JST).date()
 
 # 3 fixed categories, matching the noticeboard sheet (フライあり/フライなし/野菜).
 # "フライ" is kept on fry/nofry because "あり"/"なし" alone reads as an
@@ -91,6 +137,26 @@ def init_db():
         """
     )
     db.commit()
+
+    # Enforce "one active order per person per day" at the DB level, closing the
+    # check-then-insert race a double-submit could otherwise slip through to
+    # create two counted bento. Partial index: only 'ordered' rows are
+    # constrained, so any number of 'cancelled' rows for the same day are fine.
+    try:
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_orders_active "
+            "ON orders(employee_name, order_date) WHERE status = 'ordered'"
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        # Legacy data already contains duplicate active orders, so the index
+        # can't be built yet. Start anyway (unprotected) but make it loud so an
+        # admin can resolve the duplicates, after which a restart adds the index.
+        print(
+            "WARNING: 既存データに同一人物・同一日の重複注文があるため、"
+            "重複防止インデックスを作成できませんでした。管理画面で重複を解消してください。",
+            file=sys.stderr,
+        )
     db.close()
 
 
@@ -133,7 +199,7 @@ def get_week_deadline(db, monday, settings):
 
 
 def week_is_open(db, monday, settings, now=None):
-    now = now or datetime.now()
+    now = now or now_jst()
     return now < get_week_deadline(db, monday, settings)
 
 
@@ -168,7 +234,7 @@ def index():
 
     db = get_db()
     settings = get_settings()
-    today = date.today()
+    today = today_jst()
 
     menu_rows = db.execute(
         "SELECT * FROM menu_items WHERE item_date >= ? ORDER BY item_date",
@@ -315,14 +381,27 @@ def order_week():
             if existing["menu_item_id"] != menu_item["id"]:
                 db.execute(
                     "UPDATE orders SET menu_item_id = ?, unit_price = ?, created_at = ? WHERE id = ?",
-                    (menu_item["id"], settings["price"], datetime.now().isoformat(), existing["id"]),
+                    (menu_item["id"], settings["price"], now_jst().isoformat(), existing["id"]),
                 )
         else:
-            db.execute(
-                "INSERT INTO orders (order_date, employee_name, menu_item_id, quantity, status, paid, "
-                "unit_price, created_by, created_at) VALUES (?, ?, ?, 1, 'ordered', 0, ?, 'self', ?)",
-                (d_str, employee_name, menu_item["id"], settings["price"], datetime.now().isoformat()),
-            )
+            try:
+                db.execute(
+                    "INSERT INTO orders (order_date, employee_name, menu_item_id, quantity, status, paid, "
+                    "unit_price, created_by, created_at) VALUES (?, ?, ?, 1, 'ordered', 0, ?, 'self', ?)",
+                    (d_str, employee_name, menu_item["id"], settings["price"], now_jst().isoformat()),
+                )
+            except sqlite3.IntegrityError:
+                # Raced with another submit (double-click / two tabs) that just
+                # created this day's order; fold into an update, not a 500.
+                dup = db.execute(
+                    "SELECT id FROM orders WHERE employee_name = ? AND order_date = ? AND status = 'ordered'",
+                    (employee_name, d_str),
+                ).fetchone()
+                if dup:
+                    db.execute(
+                        "UPDATE orders SET menu_item_id = ?, unit_price = ?, created_at = ? WHERE id = ?",
+                        (menu_item["id"], settings["price"], now_jst().isoformat(), dup["id"]),
+                    )
 
     db.commit()
     flash("注文を更新しました。", "success")
@@ -411,7 +490,7 @@ def admin_dashboard():
 
     db = get_db()
     settings = get_settings()
-    today = date.today()
+    today = today_jst()
     today_str = today.isoformat()
 
     menu_rows = db.execute(
@@ -563,7 +642,7 @@ def admin_import_menu_pdf():
         flash(error, "error")
         return redirect(url_for("admin_dashboard"))
 
-    today_str = date.today().isoformat()
+    today_str = today_jst().isoformat()
     # Don't offer to overwrite dates already in the past.
     dates = sorted(d for d in result.keys() if d >= today_str)
     if not dates:
@@ -662,14 +741,26 @@ def admin_proxy_add_order():
     if existing:
         db.execute(
             "UPDATE orders SET menu_item_id = ?, unit_price = ?, created_at = ?, created_by = 'admin' WHERE id = ?",
-            (menu_item["id"], settings["price"], datetime.now().isoformat(), existing["id"]),
+            (menu_item["id"], settings["price"], now_jst().isoformat(), existing["id"]),
         )
     else:
-        db.execute(
-            "INSERT INTO orders (order_date, employee_name, menu_item_id, quantity, status, paid, "
-            "unit_price, created_by, created_at) VALUES (?, ?, ?, 1, 'ordered', 0, ?, 'admin', ?)",
-            (order_date, employee_name, menu_item["id"], settings["price"], datetime.now().isoformat()),
-        )
+        try:
+            db.execute(
+                "INSERT INTO orders (order_date, employee_name, menu_item_id, quantity, status, paid, "
+                "unit_price, created_by, created_at) VALUES (?, ?, ?, 1, 'ordered', 0, ?, 'admin', ?)",
+                (order_date, employee_name, menu_item["id"], settings["price"], now_jst().isoformat()),
+            )
+        except sqlite3.IntegrityError:
+            # Raced with another active order for the same person/day; update it.
+            dup = db.execute(
+                "SELECT id FROM orders WHERE employee_name = ? AND order_date = ? AND status = 'ordered'",
+                (employee_name, order_date),
+            ).fetchone()
+            if dup:
+                db.execute(
+                    "UPDATE orders SET menu_item_id = ?, unit_price = ?, created_at = ?, created_by = 'admin' WHERE id = ?",
+                    (menu_item["id"], settings["price"], now_jst().isoformat(), dup["id"]),
+                )
     db.commit()
     flash(f"{employee_name} さんの注文を登録しました。", "success")
     return redirect(url_for("admin_dashboard"))
@@ -706,8 +797,14 @@ def admin_restore_order():
     if conflict:
         flash(f"{order['employee_name']} さんは既にこの日の別の注文があるため元に戻せません。", "error")
         return redirect(url_for("admin_dashboard"))
-    db.execute("UPDATE orders SET status = 'ordered' WHERE id = ?", (order_id,))
-    db.commit()
+    try:
+        db.execute("UPDATE orders SET status = 'ordered' WHERE id = ?", (order_id,))
+        db.commit()
+    except sqlite3.IntegrityError:
+        # The unique index caught a same-day active order created between the
+        # conflict check above and here.
+        flash(f"{order['employee_name']} さんは既にこの日の別の注文があるため元に戻せません。", "error")
+        return redirect(url_for("admin_dashboard"))
     flash(f"{order['employee_name']} さんの注文を元に戻しました。", "success")
     return redirect(url_for("admin_dashboard"))
 
@@ -795,11 +892,11 @@ def admin_print_checklist():
         return redirect(url_for("admin_login"))
 
     db = get_db()
-    target_date = request.args.get("date") or date.today().isoformat()
+    target_date = request.args.get("date") or today_jst().isoformat()
     try:
         d = date.fromisoformat(target_date)
     except ValueError:
-        d = date.today()
+        d = today_jst()
         target_date = d.isoformat()
 
     raw = db.execute(
@@ -843,9 +940,9 @@ def admin_print_checklist_week():
     db = get_db()
     monday_param = request.args.get("monday")
     try:
-        base_date = date.fromisoformat(monday_param) if monday_param else date.today()
+        base_date = date.fromisoformat(monday_param) if monday_param else today_jst()
     except ValueError:
-        base_date = date.today()
+        base_date = today_jst()
     monday = week_monday(base_date)
     days = [monday + timedelta(days=i) for i in range(5)]
     day_strs = [d.isoformat() for d in days]
