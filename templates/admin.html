@@ -21,27 +21,27 @@
     <span style="margin-left:6px;">お弁当受け取り時に紙にレ点をつけるための一覧です。週1枚まとめて印刷しておき、締切後の当日追加分はその紙に手書きで追記する運用がおすすめです。</span>
   </p>
   {% if today_orders %}
-  <p class="muted">実際に出社している人と見比べて、休みなのに注文が残っている人がいたらここでキャンセルしてください。</p>
+  <p class="muted">人から聞いたり、Salesforceのチャターで確認したりして「今日休みなのに注文が残っている人」が分かったら、チェックを入れて まとめてキャンセルできます。</p>
+  <form method="post" action="{{ url_for('admin_bulk_cancel') }}" id="today-orders-form">
   <div class="table-scroll">
   <table class="table">
-    <thead><tr><th>氏名</th><th>メニュー</th><th>操作</th></tr></thead>
+    <thead><tr><th style="width:1%;"><input type="checkbox" id="select-all-today" title="全員選択"></th><th>氏名</th><th>メニュー</th><th>操作</th></tr></thead>
     <tbody>
       {% for o in today_orders %}
       <tr>
+        <td data-label="">
+          {% if o.status != 'cancelled' %}
+          <input type="checkbox" name="order_ids" value="{{ o.id }}" class="today-row-check">
+          {% endif %}
+        </td>
         <td data-label="氏名" class="{{ 'is-cancelled' if o.status == 'cancelled' else '' }}">{{ o.employee_name }}</td>
         <td data-label="メニュー" class="{{ 'is-cancelled' if o.status == 'cancelled' else '' }}">{{ o.item_display }}</td>
         <td data-label="操作">
           {% if o.status == 'cancelled' %}
             <span class="muted" style="font-size:0.8rem; margin-right:6px;">キャンセル済み</span>
-            <form method="post" action="{{ url_for('admin_restore_order') }}" style="display:inline;" onsubmit="return confirm('{{ o.employee_name }}さんの注文を元に戻しますか?');">
-              <input type="hidden" name="order_id" value="{{ o.id }}">
-              <button type="submit" class="btn small">元に戻す</button>
-            </form>
+            <button type="submit" formaction="{{ url_for('admin_restore_order') }}" class="btn small" name="order_id" value="{{ o.id }}" onclick="return confirm('{{ o.employee_name }}さんの注文を元に戻しますか?');">元に戻す</button>
           {% else %}
-          <form method="post" action="{{ url_for('admin_cancel_order') }}" onsubmit="return confirm('{{ o.employee_name }}さんの{{ check_date }}の注文をキャンセルしますか?');">
-            <input type="hidden" name="order_id" value="{{ o.id }}">
-            <button type="submit" class="btn small">キャンセル</button>
-          </form>
+          <button type="submit" formaction="{{ url_for('admin_cancel_order') }}" class="btn small" name="order_id" value="{{ o.id }}" onclick="return confirm('{{ o.employee_name }}さんの{{ check_date }}の注文をキャンセルしますか?');">キャンセル</button>
           {% endif %}
         </td>
       </tr>
@@ -49,6 +49,8 @@
     </tbody>
   </table>
   </div>
+  <button type="submit" class="btn primary" style="margin-top:10px;" id="bulk-cancel-btn" disabled onclick="return confirm('選択した人の注文をまとめてキャンセルしますか?');">選択した人をまとめてキャンセル</button>
+  </form>
   {% else %}
   <p class="muted">この日の注文はありません。</p>
   {% endif %}
@@ -308,6 +310,26 @@
     {% endfor %}
   </div>
 </div>
+
+<script>
+(function () {
+  var selectAll = document.getElementById('select-all-today');
+  var checks = Array.prototype.slice.call(document.querySelectorAll('.today-row-check'));
+  var bulkBtn = document.getElementById('bulk-cancel-btn');
+  if (!bulkBtn) return;
+  function updateBulkBtn() {
+    bulkBtn.disabled = !checks.some(function (c) { return c.checked; });
+  }
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      checks.forEach(function (c) { c.checked = selectAll.checked; });
+      updateBulkBtn();
+    });
+  }
+  checks.forEach(function (c) { c.addEventListener('change', updateBulkBtn); });
+  updateBulkBtn();
+})();
+</script>
 
 <script>
 (function () {

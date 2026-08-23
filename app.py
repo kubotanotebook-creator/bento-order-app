@@ -864,6 +864,26 @@ def admin_cancel_order():
     return redirect(url_for("admin_dashboard"))
 
 
+@app.route("/admin/orders/bulk-cancel", methods=["POST"])
+def admin_bulk_cancel():
+    """Cancel several people's orders in one submit, for the morning
+    attendance check on 本日の注文 — checking off several no-shows found via
+    word of mouth or Salesforce Chatter shouldn't take one click-and-confirm
+    each."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    order_ids = request.form.getlist("order_ids")
+    if not order_ids:
+        flash("キャンセルする人を選択してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+    placeholders = ",".join("?" * len(order_ids))
+    db.execute(f"UPDATE orders SET status = 'cancelled' WHERE id IN ({placeholders})", order_ids)
+    db.commit()
+    flash(f"{len(order_ids)}件の注文をキャンセルしました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
 @app.route("/admin/orders/restore", methods=["POST"])
 def admin_restore_order():
     """Undo a cancellation. Refuses if the employee already has a separate
