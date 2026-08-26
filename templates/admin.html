@@ -258,9 +258,10 @@
         <span class="chevron">▶</span> {{ order_date }}({{ order_date|weekday_jp }}){% if is_today %} <span class="badge open">本日</span>{% endif %}
       </button>
       <span class="date-counts">
+        合計{{ items|sum(attribute='quantity') }}食
         {% for code in category_codes %}
           {% set c = items|selectattr('category', 'equalto', code)|list|length %}
-          {% if c %}{{ category_short[code] }}{{ c }}{% if not loop.last %}・{% endif %}{% endif %}
+          {% if c %}・{{ category_short[code] }}{{ c }}{% endif %}
         {% endfor %}
       </span>
       <span class="day-status" id="day-status-{{ order_date }}">
