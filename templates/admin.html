@@ -15,11 +15,6 @@
     <button type="submit" class="btn small">表示</button>
     {% if not is_check_date_today %}<a href="{{ url_for('admin_dashboard') }}" class="btn small">今日に戻す</a>{% endif %}
   </form>
-  <p class="muted">
-    <a href="{{ url_for('admin_print_checklist_week') }}" target="_blank" class="btn small">今週分をまとめてA4で印刷(1枚)</a>
-    <a href="{{ url_for('admin_print_checklist', date=check_date) }}" target="_blank" class="btn small">この日の分だけ印刷</a>
-    <span style="margin-left:6px;">お弁当受け取り時に紙にレ点をつけるための一覧です。週1枚まとめて印刷しておき、締切後の当日追加分はその紙に手書きで追記する運用がおすすめです。</span>
-  </p>
   {% if today_orders %}
   <p class="muted">人から聞いたり、Salesforceのチャターで確認したりして「今日休みなのに注文が残っている人」が分かったら、チェックを入れて まとめてキャンセルできます。</p>
   <form method="post" action="{{ url_for('admin_bulk_cancel') }}" id="today-orders-form">
@@ -94,6 +89,7 @@
   <button type="button" class="tab-btn" data-tab="orders" role="tab">注文一覧</button>
   <button type="button" class="tab-btn" data-tab="menu" role="tab">メニュー登録</button>
   <button type="button" class="tab-btn" data-tab="settings" role="tab">締め切り時間設定</button>
+  <button type="button" class="tab-btn" data-tab="print" role="tab">弁当チェック表印刷</button>
 </div>
 
 <div class="tab-panel" data-tab="proxy">
@@ -281,14 +277,14 @@
       <div class="table-scroll">
       <table class="table">
         <thead>
-          <tr><th>氏名</th><th>区分</th><th>支払済</th><th>操作</th></tr>
+          <tr><th>氏名</th><th>区分</th><th>チケット回収確認</th><th>操作</th></tr>
         </thead>
         <tbody>
           {% for o in items %}
           <tr>
             <td data-label="氏名">{{ o.employee_name }}{% if o.cancel_requested_at %} <span class="badge closed">キャンセル希望</span>{% endif %}</td>
             <td data-label="区分">{{ category_labels[o.category] }}</td>
-            <td data-label="支払済">
+            <td data-label="チケット回収確認">
               <input type="checkbox" class="paid-toggle" data-order-id="{{ o.id }}" data-order-date="{{ order_date }}" data-employee-name="{{ o.employee_name }}" {% if o.paid %}checked{% endif %}>
             </td>
             <td data-label="操作">
@@ -443,6 +439,22 @@
     {% else %}
     <p class="muted">メニューが登録されている週がありません。</p>
     {% endif %}
+  </div>
+</div>
+
+<div class="tab-panel" data-tab="print">
+  <div class="card">
+    <h1>弁当チェック表印刷</h1>
+    <p class="muted">お弁当受け取り時に紙にレ点をつけるための一覧です。週1枚まとめて印刷しておき、締切後の当日追加分はその紙に手書きで追記する運用がおすすめです。</p>
+    <p>
+      <a href="{{ url_for('admin_print_checklist_week') }}" target="_blank" class="btn primary">今週分をまとめてA4で印刷(1枚)</a>
+    </p>
+    <form method="get" action="{{ url_for('admin_print_checklist') }}" target="_blank" class="inline-form">
+      <label style="margin-bottom:0;">日付を指定して印刷
+        <input type="date" name="date" value="{{ check_date }}">
+      </label>
+      <button type="submit" class="btn small">この日の分だけ印刷</button>
+    </form>
   </div>
 </div>
 
