@@ -279,6 +279,30 @@ def payroll_cycle(d):
     return start, end
 
 
+def employee_ticket_status(db, employee_name, today):
+    """Ticket status from the logged 受け渡し記録 (admin_issue_tickets): the
+    last booklet handed out, minus bento actually picked up (order_date
+    <= today, so not-yet-happened future orders aren't counted as used
+    yet) since that handout."""
+    last_issuance = db.execute(
+        "SELECT * FROM ticket_issuances WHERE employee_name = ? ORDER BY issued_at DESC, id DESC LIMIT 1",
+        (employee_name,),
+    ).fetchone()
+    if not last_issuance:
+        return {"known": False}
+    used_since_issuance = db.execute(
+        "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
+        "AND order_date >= ? AND order_date <= ?",
+        (employee_name, last_issuance["issued_at"], today.isoformat()),
+    ).fetchone()["c"]
+    return {
+        "known": True,
+        "remaining": max(0, last_issuance["quantity"] - used_since_issuance),
+        "total": last_issuance["quantity"],
+        "issued_at": last_issuance["issued_at"],
+    }
+
+
 def item_display_name(category, name):
     label = CATEGORY_LABELS.get(category, category)
     return f"{label}({name})" if name else label
@@ -373,28 +397,7 @@ def index():
         "ordered_count": next_week_ordered,
     }
 
-    # Ticket status from the logged 受け渡し記録 (admin_issue_tickets): the
-    # last booklet handed out, minus bento actually picked up (order_date
-    # <= today, so not-yet-happened future orders aren't counted as used
-    # yet) since that handout.
-    last_issuance = db.execute(
-        "SELECT * FROM ticket_issuances WHERE employee_name = ? ORDER BY issued_at DESC, id DESC LIMIT 1",
-        (employee_name,),
-    ).fetchone()
-    if last_issuance:
-        used_since_issuance = db.execute(
-            "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
-            "AND order_date >= ? AND order_date <= ?",
-            (employee_name, last_issuance["issued_at"], today.isoformat()),
-        ).fetchone()["c"]
-        ticket_status = {
-            "known": True,
-            "remaining": max(0, last_issuance["quantity"] - used_since_issuance),
-            "total": last_issuance["quantity"],
-            "issued_at": last_issuance["issued_at"],
-        }
-    else:
-        ticket_status = {"known": False}
+    ticket_status = employee_ticket_status(db, employee_name, today)
 
     # This payroll cycle's deduction: one ¥3,000 charge per booklet handed
     # out within the cycle (billed on handout date, not on ticket use — see
@@ -878,13 +881,32 @@ def admin_dashboard():
         r["name"] for r in db.execute("SELECT name FROM employees ORDER BY name").fetchall()
     ]
 
-    # Recent ticket handouts, newest first, for the 代理注文 tab's history
+    # Recent ticket handouts, newest first, for the チケット管理 tab's history
     # table (with a delete button per row to undo a mis-entered date/name).
     ticket_issuances = [
         dict(r) for r in db.execute(
             "SELECT * FROM ticket_issuances ORDER BY issued_at DESC, id DESC LIMIT 50"
         ).fetchall()
     ]
+
+    # Each known name's current ticket status, for the 受け渡し記録 form's
+    # employee dropdown — a plain-text field risked a handout landing on
+    # the wrong person (e.g. a typo, or picking the wrong "田中"), and
+    # showing remaining counts right in the list makes it obvious who's
+    # actually run out and needs a new booklet.
+    ticket_dropdown_options = []
+    for name in known_employees:
+        status = employee_ticket_status(db, name, today)
+        if status["known"]:
+            label = f"{name}(残り{status['remaining']}枚)"
+            out_of_tickets = status["remaining"] <= 0
+        else:
+            label = f"{name}(受け渡し記録なし)"
+            out_of_tickets = True
+        ticket_dropdown_options.append({"name": name, "label": label, "out_of_tickets": out_of_tickets})
+    # Whoever's out of tickets (or has no record at all) is the one an admin
+    # actually needs to find in this list, so surface them first.
+    ticket_dropdown_options.sort(key=lambda o: not o["out_of_tickets"])
 
     weekday_labels = list(enumerate(WEEKDAY_JP))
 
@@ -969,6 +991,7 @@ def admin_dashboard():
         known_employees=known_employees,
         registered_employees=registered_employees,
         ticket_issuances=ticket_issuances,
+        ticket_dropdown_options=ticket_dropdown_options,
         proxy_menu_map=proxy_menu_map,
         weekday_labels=weekday_labels,
         week_deadlines=week_deadlines,
@@ -1199,24 +1222,6 @@ def admin_proxy_add_week():
         flash(f"{employee_name} さんの{saved}日分の注文を登録しました。", "success")
     else:
         flash("登録する区分が選択されていませんでした。", "error")
-    return redirect(url_for("admin_dashboard"))
-
-
-@app.route("/admin/orders/mark-day-paid", methods=["POST"])
-def admin_mark_day_paid():
-    """Bulk-mark every active order on one date as paid, for the 注文一覧
-    date group's "全員精算済み" button — avoids clicking the toggle once per
-    person when a whole day's bento was paid for together."""
-    if not admin_required():
-        return redirect(url_for("admin_login"))
-    db = get_db()
-    order_date = request.form.get("order_date")
-    db.execute(
-        "UPDATE orders SET paid = 1 WHERE order_date = ? AND status = 'ordered'",
-        (order_date,),
-    )
-    db.commit()
-    flash(f"{order_date} の注文を全員精算済みにしました。", "success")
     return redirect(url_for("admin_dashboard"))
 
 
