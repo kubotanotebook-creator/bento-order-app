@@ -334,37 +334,36 @@ def index():
         return render_template("login.html", known_employees=known_employees)
 
     db = get_db()
+    settings = get_settings()
     today = today_jst()
-    menu_by_date, my_selection, _ = _load_employee_menu_context(db, employee_name, today)
 
-    # Quick at-a-glance status for the next couple of business days, shown at
-    # the very top of the dashboard so it's visible no matter why someone
-    # opened the app — meant to catch "did I actually order today/tomorrow?"
-    # and "I'm off tomorrow, did I remember to cancel?" right away.
-    quick_status = []
-    for d_str in sorted(menu_by_date.keys())[:2]:
-        if d_str < today.isoformat():
-            continue
-        d = date.fromisoformat(d_str)
-        selected_item_id = my_selection.get(d_str)
-        display = None
-        if selected_item_id:
-            for item in menu_by_date[d_str].values():
-                if item["id"] == selected_item_id:
-                    display = item_display_name(item["category"], item["name"])
-        quick_status.append({
-            "date": d_str,
-            "weekday": WEEKDAY_JP[d.weekday()],
-            "is_today": d == today,
-            "ordered": display is not None,
-            "display": display,
-        })
+    # This week's full Mon-Fri picture, INCLUDING already-passed days —
+    # deliberately not reusing menu_by_date/_load_employee_menu_context
+    # (those only look from today onward), since "what did I already order
+    # this week" needs Monday and Tuesday to still show up on a Wednesday.
+    this_monday = week_monday(today)
+    this_friday = this_monday + timedelta(days=4)
+    this_week_days = _week_glance(db, employee_name, this_monday)
+
+    # Next week: has anything been ordered yet, and is it still open — the
+    # "did I forget to order for next week" check, most relevant right
+    # around the Friday 15:00 deadline.
+    next_monday = this_monday + timedelta(days=7)
+    next_week_days = _week_glance(db, employee_name, next_monday)
+    next_week_menu_exists = any(d["cats"] for d in next_week_days)
+    next_week_ordered = sum(1 for d in next_week_days if d["selected_code"])
+    next_week_status = {
+        "label": build_week_label(next_monday),
+        "menu_exists": next_week_menu_exists,
+        "open": week_is_open(db, next_monday, settings),
+        "deadline_str": get_week_deadline(db, next_monday, settings).strftime("%m/%d(%a) %H:%M"),
+        "ordered_count": next_week_ordered,
+    }
 
     # Current payroll/ticket cycle summary, so the top-level dashboard answers
-    # "how many bento have I taken, and roughly how much, since the last
-    # 15th cutoff" without a trip to 注文履歴. Reference figures only — see
+    # "how much will be deducted this month, and does it match my own ticket
+    # count" without a trip to 注文履歴. Reference figures only — see
     # payroll_cycle()'s docstring.
-    settings = get_settings()
     cycle_start, cycle_end = payroll_cycle(today)
     cycle_rows = db.execute(
         "SELECT o.*, m.category as category FROM orders o "
@@ -382,9 +381,58 @@ def index():
     return render_template(
         "dashboard.html",
         employee_name=employee_name,
-        quick_status=quick_status,
+        this_week_label=build_week_label(this_monday),
+        this_week_days=this_week_days,
+        next_week_status=next_week_status,
         cycle_summary=cycle_summary,
+        category_labels=CATEGORY_LABELS,
+        today=today.isoformat(),
     )
+
+
+def _week_glance(db, employee_name, monday):
+    """One employee's Mon-Fri picture for the week starting `monday`: menu
+    (if registered) + what they've selected, regardless of whether those
+    dates are in the past, today, or the future. Used for the dashboard's
+    this-week/next-week summaries, which — unlike the ordering page — need
+    to show already-passed days too."""
+    friday = monday + timedelta(days=4)
+    today = today_jst()
+    menu_rows = db.execute(
+        "SELECT * FROM menu_items WHERE item_date >= ? AND item_date <= ?",
+        (monday.isoformat(), friday.isoformat()),
+    ).fetchall()
+    menu_by_date = {}
+    for row in menu_rows:
+        menu_by_date.setdefault(row["item_date"], {})[row["category"]] = row
+
+    order_rows = db.execute(
+        "SELECT * FROM orders WHERE employee_name = ? AND order_date >= ? AND order_date <= ? "
+        "AND status = 'ordered'",
+        (employee_name, monday.isoformat(), friday.isoformat()),
+    ).fetchall()
+    selection = {o["order_date"]: o["menu_item_id"] for o in order_rows}
+
+    days = []
+    for i in range(5):
+        d = monday + timedelta(days=i)
+        d_str = d.isoformat()
+        cats = menu_by_date.get(d_str, {})
+        selected_item_id = selection.get(d_str)
+        selected_code = None
+        for code, item in cats.items():
+            if item["id"] == selected_item_id:
+                selected_code = code
+        days.append({
+            "date": d_str,
+            "mmdd": f"{d.month}/{d.day}",
+            "weekday": WEEKDAY_JP[d.weekday()],
+            "cats": cats,
+            "selected_code": selected_code,
+            "is_today": d == today,
+            "is_past": d < today,
+        })
+    return days
 
 
 def _load_employee_menu_context(db, employee_name, today):
