@@ -154,6 +154,19 @@ def init_db():
             name TEXT PRIMARY KEY,
             birthday TEXT NOT NULL
         );
+
+        -- Digitizes the paper チケット受け渡し表: one row per time
+        -- 松浦さん/陽介さん physically hand someone a fresh 10-ticket booklet.
+        -- This is what "残り枚数" and "天引き予定額" are computed from — the
+        -- app has no way to observe real ticket handouts on its own, so this
+        -- table only knows what's been logged here.
+        CREATE TABLE IF NOT EXISTS ticket_issuances (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_name TEXT NOT NULL,
+            issued_at TEXT NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 10,
+            created_at TEXT NOT NULL
+        );
         """
     )
     db.commit()
@@ -360,32 +373,52 @@ def index():
         "ordered_count": next_week_ordered,
     }
 
-    # Current payroll/ticket cycle summary, so the top-level dashboard answers
-    # "how much will be deducted this month, and does it match my own ticket
-    # count" without a trip to 注文履歴. Reference figures only — see
-    # payroll_cycle()'s docstring.
-    cycle_start, cycle_end = payroll_cycle(today)
-    cycle_rows = db.execute(
-        "SELECT o.*, m.category as category FROM orders o "
-        "JOIN menu_items m ON o.menu_item_id = m.id "
-        "WHERE o.employee_name = ? AND o.status = 'ordered' "
-        "AND o.order_date >= ? AND o.order_date <= ?",
-        (employee_name, cycle_start.isoformat(), cycle_end.isoformat()),
-    ).fetchall()
-    # Real deduction isn't per-ticket: 松浦さん/陽介さん hand out a fresh
-    # 10-ticket booklet (¥3,000) whenever the last one runs out, and that
-    # handout — not individual ticket use — is what's logged and billed.
-    # So round the cycle's ticket count UP to whole booklets rather than
-    # charging a smooth per-order amount.
-    cycle_ticket_count = sum(r["quantity"] for r in cycle_rows)
-    cycle_booklets = -(-cycle_ticket_count // 10)  # ceil division
+    # Ticket status from the logged 受け渡し記録 (admin_issue_tickets): the
+    # last booklet handed out, minus bento actually picked up (order_date
+    # <= today, so not-yet-happened future orders aren't counted as used
+    # yet) since that handout.
+    last_issuance = db.execute(
+        "SELECT * FROM ticket_issuances WHERE employee_name = ? ORDER BY issued_at DESC, id DESC LIMIT 1",
+        (employee_name,),
+    ).fetchone()
+    if last_issuance:
+        used_since_issuance = db.execute(
+            "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
+            "AND order_date >= ? AND order_date <= ?",
+            (employee_name, last_issuance["issued_at"], today.isoformat()),
+        ).fetchone()["c"]
+        ticket_status = {
+            "known": True,
+            "remaining": max(0, last_issuance["quantity"] - used_since_issuance),
+            "total": last_issuance["quantity"],
+            "issued_at": last_issuance["issued_at"],
+        }
+    else:
+        ticket_status = {"known": False}
+
+    # This payroll cycle's deduction: one ¥3,000 charge per booklet handed
+    # out within the cycle (billed on handout date, not on ticket use — see
+    # payroll_cycle()'s docstring), from the 受け渡し記録 table itself.
+    # Falls back to showing the order count as a reference only if nothing
+    # has been logged yet for this cycle.
     price_per_booklet = settings["price"] * 10
+    cycle_start, cycle_end = payroll_cycle(today)
+    cycle_booklets = db.execute(
+        "SELECT COUNT(*) as c FROM ticket_issuances WHERE employee_name = ? "
+        "AND issued_at >= ? AND issued_at <= ?",
+        (employee_name, cycle_start.isoformat(), cycle_end.isoformat()),
+    ).fetchone()["c"]
+    cycle_order_count = db.execute(
+        "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
+        "AND order_date >= ? AND order_date <= ?",
+        (employee_name, cycle_start.isoformat(), cycle_end.isoformat()),
+    ).fetchone()["c"]
     cycle_summary = {
         "label": f"{cycle_start.month}/{cycle_start.day}〜{cycle_end.month}/{cycle_end.day}",
-        "ticket_count": cycle_ticket_count,
         "booklets": cycle_booklets,
-        "price_per_booklet": price_per_booklet,
         "total": cycle_booklets * price_per_booklet,
+        "price_per_booklet": price_per_booklet,
+        "order_count": cycle_order_count,
     }
 
     return render_template(
@@ -394,6 +427,7 @@ def index():
         this_week_label=build_week_label(this_monday),
         this_week_days=this_week_days,
         next_week_status=next_week_status,
+        ticket_status=ticket_status,
         cycle_summary=cycle_summary,
         category_labels=CATEGORY_LABELS,
         today=today.isoformat(),
@@ -844,6 +878,14 @@ def admin_dashboard():
         r["name"] for r in db.execute("SELECT name FROM employees ORDER BY name").fetchall()
     ]
 
+    # Recent ticket handouts, newest first, for the 代理注文 tab's history
+    # table (with a delete button per row to undo a mis-entered date/name).
+    ticket_issuances = [
+        dict(r) for r in db.execute(
+            "SELECT * FROM ticket_issuances ORDER BY issued_at DESC, id DESC LIMIT 50"
+        ).fetchall()
+    ]
+
     weekday_labels = list(enumerate(WEEKDAY_JP))
 
     # This card defaults to today but can be pointed at any date (e.g. to
@@ -926,6 +968,7 @@ def admin_dashboard():
         category_short=CATEGORY_SHORT,
         known_employees=known_employees,
         registered_employees=registered_employees,
+        ticket_issuances=ticket_issuances,
         proxy_menu_map=proxy_menu_map,
         weekday_labels=weekday_labels,
         week_deadlines=week_deadlines,
@@ -1188,6 +1231,46 @@ def admin_reset_employee_birthday():
     db.execute("DELETE FROM employees WHERE name = ?", (name,))
     db.commit()
     flash(f"{name} さんの生年月日の登録をリセットしました。次回ログイン時に再登録されます。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/tickets/issue", methods=["POST"])
+def admin_issue_tickets():
+    """Log that a fresh 10-ticket booklet was handed to someone — the digital
+    twin of writing a line in the paper チケット受け渡し表. This is the only
+    source of truth for 残り枚数/天引き予定額 on the employee dashboard."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    name = request.form.get("employee_name", "").strip()
+    issued_at = request.form.get("issued_at", "").strip()
+    if not name or not issued_at:
+        flash("氏名と日付を入力してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        date.fromisoformat(issued_at)
+    except ValueError:
+        flash("日付の形式が正しくありません。", "error")
+        return redirect(url_for("admin_dashboard"))
+    db.execute(
+        "INSERT INTO ticket_issuances (employee_name, issued_at, quantity, created_at) VALUES (?, ?, 10, ?)",
+        (name, issued_at, now_jst().isoformat()),
+    )
+    db.commit()
+    flash(f"{name} さんに{issued_at}付でチケット10枚を渡した記録を保存しました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/tickets/delete", methods=["POST"])
+def admin_delete_ticket_issuance():
+    """Undo a mis-entered 受け渡し記録 (wrong date, wrong name, duplicate)."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    issuance_id = request.form.get("issuance_id")
+    db.execute("DELETE FROM ticket_issuances WHERE id = ?", (issuance_id,))
+    db.commit()
+    flash("受け渡し記録を削除しました。", "success")
     return redirect(url_for("admin_dashboard"))
 
 

@@ -44,13 +44,28 @@
 </div>
 
 <div class="card">
-  <h1 style="margin-top:0;">今月の天引き予定({{ cycle_summary.label }})</h1>
+  <h1 style="margin-top:0;">チケット残り枚数</h1>
+  {% if ticket_status.known %}
   <div class="summary-row">
-    <div class="stat"><span class="stat-label">注文数</span><span class="stat-value">{{ cycle_summary.ticket_count }}枚</span></div>
-    <div class="stat"><span class="stat-label">冊数換算</span><span class="stat-value">{{ cycle_summary.booklets }}冊</span></div>
+    <div class="stat"><span class="stat-label">残り</span><span class="stat-value">{{ ticket_status.remaining }}/{{ ticket_status.total }}枚</span></div>
+  </div>
+  <p class="muted" style="margin-bottom:0;">最後にもらった日: {{ ticket_status.issued_at }}</p>
+  {% else %}
+  <p class="muted" style="margin-bottom:0;">受け渡し記録がまだありません。松浦さんか陽介さんに確認してください。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h1 style="margin-top:0;">今月の天引き予定({{ cycle_summary.label }})</h1>
+  {% if cycle_summary.booklets %}
+  <div class="summary-row">
+    <div class="stat"><span class="stat-label">受け渡し</span><span class="stat-value">{{ cycle_summary.booklets }}冊</span></div>
     <div class="stat"><span class="stat-label">天引き予定額</span><span class="stat-value">¥{{ cycle_summary.total }}</span></div>
   </div>
-  <p class="muted" style="margin-bottom:0;">※天引きは10枚1冊(¥{{ cycle_summary.price_per_booklet }})単位のため、注文数を10枚ごとに切り上げて計算した目安です。手元のチケット残数と合っているかご確認ください。ズレがあれば松浦さんか陽介さんにお伝えください。実際の給与天引きは、お二人のチケット受け渡し記録が正式なものになります。</p>
+  <p class="muted" style="margin-bottom:0;">松浦さん・陽介さんの受け渡し記録(10枚1冊 ¥{{ cycle_summary.price_per_booklet }})にもとづく金額です。</p>
+  {% else %}
+  <p class="muted" style="margin-bottom:0;">この期間の受け渡し記録はまだありません(参考: この期間の注文数 {{ cycle_summary.order_count }}件)。</p>
+  {% endif %}
 </div>
 
 <div class="card">
