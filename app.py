@@ -281,9 +281,15 @@ def payroll_cycle(d):
 
 def employee_ticket_status(db, employee_name, today):
     """Ticket status from the logged 受け渡し記録 (admin_issue_tickets): the
-    last booklet handed out, minus bento actually picked up (order_date
-    <= today, so not-yet-happened future orders aren't counted as used
-    yet) since that handout."""
+    last booklet handed out, minus bento actually picked up since that
+    handout (order_date <= today, so not-yet-happened future orders aren't
+    counted as used yet).
+
+    The handout date itself is EXCLUDED from "used" (order_date strictly
+    after issued_at): a new booklet is only ever given after the old one
+    ran out, so if there's already an order on the handout date, that
+    order was fulfilled with the old booklet, not the fresh one — counting
+    it here would make a brand-new booklet show as already down a ticket."""
     last_issuance = db.execute(
         "SELECT * FROM ticket_issuances WHERE employee_name = ? ORDER BY issued_at DESC, id DESC LIMIT 1",
         (employee_name,),
@@ -292,7 +298,7 @@ def employee_ticket_status(db, employee_name, today):
         return {"known": False}
     used_since_issuance = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
-        "AND order_date >= ? AND order_date <= ?",
+        "AND order_date > ? AND order_date <= ?",
         (employee_name, last_issuance["issued_at"], today.isoformat()),
     ).fetchone()["c"]
     return {
