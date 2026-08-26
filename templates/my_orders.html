@@ -2,26 +2,36 @@
 {% block title %}注文履歴・費用{% endblock %}
 {% block nav %}
   <span class="who">{{ employee_name }} さん</span>
-  <a href="{{ url_for('index') }}">メニューに戻る</a>
+  <a href="{{ url_for('index') }}">ダッシュボードに戻る</a>
   <a href="{{ url_for('logout') }}">ログアウト</a>
 {% endblock %}
 {% block content %}
 <div class="card">
   <h1>注文履歴・費用</h1>
   <div class="summary-row">
-    <div class="stat"><span class="stat-label">合計金額</span><span class="stat-value">¥{{ total }}</span></div>
+    <div class="stat"><span class="stat-label">合計金額(全期間)</span><span class="stat-value">¥{{ total }}</span></div>
     <div class="stat"><span class="stat-label">未精算</span><span class="stat-value">¥{{ unpaid_total }}</span></div>
   </div>
+  <p class="muted" style="margin-bottom:0;">下は、毎月15日締めのチケット精算期間ごとにまとめた内訳です。</p>
 </div>
 
+{% for cycle in cycles %}
 <div class="card">
+  <div class="summary-row" style="align-items:flex-end;">
+    <h2 style="margin:0;">{{ cycle.label }}</h2>
+    <div class="stat"><span class="stat-label">注文数</span><span class="stat-value">{{ cycle.ticket_count }}枚</span></div>
+    <div class="stat"><span class="stat-label">金額</span><span class="stat-value">¥{{ cycle.total }}</span></div>
+    {% if cycle.unpaid_total %}
+    <div class="stat"><span class="stat-label">うち未精算</span><span class="stat-value">¥{{ cycle.unpaid_total }}</span></div>
+    {% endif %}
+  </div>
   <div class="table-scroll">
   <table class="table">
     <thead>
       <tr><th>日付</th><th>メニュー</th><th>金額</th><th>支払状況</th><th></th></tr>
     </thead>
     <tbody>
-      {% for o in orders %}
+      {% for o in cycle.orders %}
       <tr>
         <td data-label="日付">{{ o.order_date }}</td>
         <td data-label="メニュー">{{ o.item_display }}</td>
@@ -38,11 +48,14 @@
           {% endif %}
         </td>
       </tr>
-      {% else %}
-      <tr><td colspan="5" class="muted">注文履歴がありません。</td></tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
 </div>
+{% else %}
+<div class="card">
+  <p class="muted">注文履歴がありません。</p>
+</div>
+{% endfor %}
 {% endblock %}

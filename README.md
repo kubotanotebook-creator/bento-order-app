@@ -165,8 +165,9 @@ bento-app/
 ├── templates/           # HTMLテンプレート
 │   ├── base.html
 │   ├── login.html               # 社員の簡易ログイン
-│   ├── index.html                # 社員用: 週単位の注文画面
-│   ├── my_orders.html             # 社員用: 注文履歴・費用画面
+│   ├── dashboard.html            # 社員用: ログイン後のホーム(注文状況・チケット目安)
+│   ├── order.html                # 社員用: 週単位の注文画面
+│   ├── my_orders.html             # 社員用: 注文履歴・費用画面(精算期間ごと)
 │   ├── admin_login.html          # 管理者ログイン
 │   ├── admin.html                 # 管理者用: 設定・メニュー登録・代理注文・注文一覧
 │   ├── admin_import_review.html  # PDF読み取り結果の確認・修正画面

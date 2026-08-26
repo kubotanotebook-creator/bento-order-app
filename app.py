@@ -239,6 +239,33 @@ def build_week_label(monday):
     return f"{monday.month}/{monday.day}({WEEKDAY_JP[monday.weekday()]}) 〜 {friday.month}/{friday.day}({WEEKDAY_JP[friday.weekday()]})"
 
 
+def _month_start(d):
+    return d.replace(day=1)
+
+
+def _next_month_start(d):
+    return date(d.year + 1, 1, 1) if d.month == 12 else date(d.year, d.month + 1, 1)
+
+
+def _prev_month_start(d):
+    return date(d.year - 1, 12, 1) if d.month == 1 else date(d.year, d.month - 1, 1)
+
+
+def payroll_cycle(d):
+    """The 16th-to-15th cycle containing date d, matching the real paper
+    チケット受け渡し表's cutoff (closed on the 15th, deducted from that
+    month's salary). Purely a same-cycle grouping for the employee's own
+    order-history view — NOT the source of truth for actual ticket
+    handouts, which stay on paper."""
+    if d.day <= 15:
+        end = d.replace(day=15)
+        start = _prev_month_start(d).replace(day=16)
+    else:
+        start = d.replace(day=16)
+        end = _next_month_start(d).replace(day=15)
+    return start, end
+
+
 def item_display_name(category, name):
     label = CATEGORY_LABELS.get(category, category)
     return f"{label}({name})" if name else label
@@ -307,9 +334,62 @@ def index():
         return render_template("login.html", known_employees=known_employees)
 
     db = get_db()
-    settings = get_settings()
     today = today_jst()
+    menu_by_date, my_selection, _ = _load_employee_menu_context(db, employee_name, today)
 
+    # Quick at-a-glance status for the next couple of business days, shown at
+    # the very top of the dashboard so it's visible no matter why someone
+    # opened the app — meant to catch "did I actually order today/tomorrow?"
+    # and "I'm off tomorrow, did I remember to cancel?" right away.
+    quick_status = []
+    for d_str in sorted(menu_by_date.keys())[:2]:
+        if d_str < today.isoformat():
+            continue
+        d = date.fromisoformat(d_str)
+        selected_item_id = my_selection.get(d_str)
+        display = None
+        if selected_item_id:
+            for item in menu_by_date[d_str].values():
+                if item["id"] == selected_item_id:
+                    display = item_display_name(item["category"], item["name"])
+        quick_status.append({
+            "date": d_str,
+            "weekday": WEEKDAY_JP[d.weekday()],
+            "is_today": d == today,
+            "ordered": display is not None,
+            "display": display,
+        })
+
+    # Current payroll/ticket cycle summary, so the top-level dashboard answers
+    # "how many bento have I taken, and roughly how much, since the last
+    # 15th cutoff" without a trip to 注文履歴. Reference figures only — see
+    # payroll_cycle()'s docstring.
+    settings = get_settings()
+    cycle_start, cycle_end = payroll_cycle(today)
+    cycle_rows = db.execute(
+        "SELECT o.*, m.category as category FROM orders o "
+        "JOIN menu_items m ON o.menu_item_id = m.id "
+        "WHERE o.employee_name = ? AND o.status = 'ordered' "
+        "AND o.order_date >= ? AND o.order_date <= ?",
+        (employee_name, cycle_start.isoformat(), cycle_end.isoformat()),
+    ).fetchall()
+    cycle_summary = {
+        "label": f"{cycle_start.month}/{cycle_start.day}〜{cycle_end.month}/{cycle_end.day}",
+        "ticket_count": sum(r["quantity"] for r in cycle_rows),
+        "total": sum(r["unit_price"] * r["quantity"] for r in cycle_rows),
+    }
+
+    return render_template(
+        "dashboard.html",
+        employee_name=employee_name,
+        quick_status=quick_status,
+        cycle_summary=cycle_summary,
+    )
+
+
+def _load_employee_menu_context(db, employee_name, today):
+    """Shared by the dashboard (quick_status) and the order page
+    (weeks_info): this employee's upcoming menu + their current selections."""
     menu_rows = db.execute(
         "SELECT * FROM menu_items WHERE item_date >= ? ORDER BY item_date",
         (today.isoformat(),),
@@ -330,28 +410,19 @@ def index():
         if o["cancel_requested_at"]:
             my_cancel_requested.add(o["order_date"])
 
-    # Quick at-a-glance status for the next couple of business days, shown at
-    # the very top of the page so it's visible no matter why someone opened
-    # the app — meant to catch "did I actually order today/tomorrow?" and
-    # "I'm off tomorrow, did I remember to cancel?" before they scroll past it.
-    quick_status = []
-    for d_str in sorted(menu_by_date.keys())[:2]:
-        if d_str < today.isoformat():
-            continue
-        d = date.fromisoformat(d_str)
-        selected_item_id = my_selection.get(d_str)
-        display = None
-        if selected_item_id:
-            for item in menu_by_date[d_str].values():
-                if item["id"] == selected_item_id:
-                    display = item_display_name(item["category"], item["name"])
-        quick_status.append({
-            "date": d_str,
-            "weekday": WEEKDAY_JP[d.weekday()],
-            "is_today": d == today,
-            "ordered": display is not None,
-            "display": display,
-        })
+    return menu_by_date, my_selection, my_cancel_requested
+
+
+@app.route("/order")
+def order_page():
+    employee_name = session.get("employee_name")
+    if not employee_name:
+        return redirect(url_for("index"))
+
+    db = get_db()
+    settings = get_settings()
+    today = today_jst()
+    menu_by_date, my_selection, my_cancel_requested = _load_employee_menu_context(db, employee_name, today)
 
     # Group dates into weeks (Mon..Fri)
     weeks = {}
@@ -392,10 +463,9 @@ def index():
         })
 
     return render_template(
-        "index.html",
+        "order.html",
         employee_name=employee_name,
         weeks_info=weeks_info,
-        quick_status=quick_status,
         price=settings["price"],
         category_codes=CATEGORY_CODES,
         category_labels=CATEGORY_LABELS,
@@ -419,14 +489,14 @@ def order_week():
     try:
         monday = date.fromisoformat(monday_str)
     except (TypeError, ValueError):
-        return redirect(url_for("index"))
+        return redirect(url_for("order_page"))
 
     db = get_db()
     settings = get_settings()
 
     if not week_is_open(db, monday, settings):
         flash("この週の注文受付は終了しています。当日分の追加・変更をご希望の場合は、当日9:00までに松浦さんか陽介さんまでメモでお伝えください。", "error")
-        return redirect(url_for("index"))
+        return redirect(url_for("order_page"))
 
     for i in range(5):
         d = monday + timedelta(days=i)
@@ -483,7 +553,7 @@ def order_week():
 
     db.commit()
     flash("注文を更新しました。", "success")
-    return redirect(url_for("index"))
+    return redirect(url_for("order_page"))
 
 
 @app.route("/order/cancel-day", methods=["POST"])
@@ -502,7 +572,7 @@ def order_cancel_day():
 
     order_date = request.form.get("order_date", "")
     if order_date <= today_jst().isoformat():
-        return redirect(url_for("index"))
+        return redirect(url_for("order_page"))
 
     db = get_db()
     existing = db.execute(
@@ -516,7 +586,7 @@ def order_cancel_day():
         )
         db.commit()
         flash(f"{order_date} のキャンセル希望を送信しました。松浦さんか陽介さんが確認後、正式にキャンセルされます。", "success")
-    return redirect(url_for("index"))
+    return redirect(url_for("order_page"))
 
 
 @app.route("/my-orders")
@@ -540,12 +610,33 @@ def my_orders():
         monday = week_monday(date.fromisoformat(r["order_date"]))
         row["cancellable"] = week_is_open(db, monday, settings)
         rows.append(row)
+
+    # Grouped by the same 16th-to-15th cycle the real payroll ticket
+    # deduction uses, newest cycle first — "how much/how many since the
+    # last cutoff" is the question people actually have, not an all-time
+    # flat list.
+    cycles_by_key = {}
+    for row in rows:
+        start, end = payroll_cycle(date.fromisoformat(row["order_date"]))
+        cycles_by_key.setdefault((start, end), []).append(row)
+
+    cycles = []
+    for (start, end) in sorted(cycles_by_key.keys(), reverse=True):
+        cycle_rows = cycles_by_key[(start, end)]
+        cycles.append({
+            "label": f"{start.month}/{start.day}〜{end.month}/{end.day}",
+            "orders": cycle_rows,
+            "ticket_count": sum(r["quantity"] for r in cycle_rows),
+            "total": sum(r["unit_price"] * r["quantity"] for r in cycle_rows),
+            "unpaid_total": sum(r["unit_price"] * r["quantity"] for r in cycle_rows if not r["paid"]),
+        })
+
     total = sum(r["unit_price"] * r["quantity"] for r in rows)
     unpaid_total = sum(r["unit_price"] * r["quantity"] for r in rows if not r["paid"])
     return render_template(
         "my_orders.html",
         employee_name=employee_name,
-        orders=rows,
+        cycles=cycles,
         total=total,
         unpaid_total=unpaid_total,
     )

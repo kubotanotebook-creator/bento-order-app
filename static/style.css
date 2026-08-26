@@ -67,6 +67,13 @@ h3 { font-size: 1rem; margin: 12px 0 6px; }
 .btn.small { padding: 5px 10px; font-size: 0.8rem; }
 .btn.ok { background: #1a7f37; color: #fff; }
 
+.dashboard-links { display: flex; gap: 12px; flex-wrap: wrap; }
+.dashboard-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 1 1 200px; text-decoration: none; padding: 16px 18px;
+  font-size: 1.05rem; font-weight: 700;
+}
+
 form label { display: block; font-size: 0.85rem; margin-bottom: 4px; color: #555; }
 input[type=text], input[type=password], input[type=number], input[type=date], input[type=time] {
   width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 12px; font-size: 0.95rem;

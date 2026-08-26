@@ -2,26 +2,10 @@
 {% block title %}お弁当注文{% endblock %}
 {% block nav %}
   <span class="who">{{ employee_name }} さん</span>
-  <a href="{{ url_for('my_orders') }}">注文履歴・費用</a>
+  <a href="{{ url_for('index') }}">ダッシュボードに戻る</a>
   <a href="{{ url_for('logout') }}">ログアウト</a>
 {% endblock %}
 {% block content %}
-{% if quick_status %}
-<div class="card quick-status">
-  <h3 style="margin-top:0;">あなたの注文状況</h3>
-  {% for qs in quick_status %}
-  <div class="quick-status-row {{ 'ok' if qs.ordered else 'warn' }}">
-    <span class="quick-status-label">{% if qs.is_today %}本日{% else %}次回営業日{% endif %}({{ qs.date }} {{ qs.weekday }})</span>
-    {% if qs.ordered %}
-      <span>✓ {{ qs.display }} を注文中</span>
-    {% else %}
-      <span>注文なし{% if qs.is_today %} — お休みなどで本日分の変更が必要な場合は、当日9:00までに松浦さんか陽介さんまでメモでお伝えください{% endif %}</span>
-    {% endif %}
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
 <div class="card">
   <h1>お弁当注文(1食 ¥{{ price }})</h1>
   <ul class="muted notice-list">

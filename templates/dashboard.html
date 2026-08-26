@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}ダッシュボード{% endblock %}
+{% block nav %}
+  <span class="who">{{ employee_name }} さん</span>
+  <a href="{{ url_for('logout') }}">ログアウト</a>
+{% endblock %}
+{% block content %}
+
+{% if quick_status %}
+<div class="card quick-status">
+  <h3 style="margin-top:0;">あなたの注文状況</h3>
+  {% for qs in quick_status %}
+  <div class="quick-status-row {{ 'ok' if qs.ordered else 'warn' }}">
+    <span class="quick-status-label">{% if qs.is_today %}本日{% else %}次回営業日{% endif %}({{ qs.date }} {{ qs.weekday }})</span>
+    {% if qs.ordered %}
+      <span>✓ {{ qs.display }} を注文中</span>
+    {% else %}
+      <span>注文なし{% if qs.is_today %} — お休みなどで本日分の変更が必要な場合は、当日9:00までに松浦さんか陽介さんまでメモでお伝えください{% endif %}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h1 style="margin-top:0;">今回のチケット精算期間({{ cycle_summary.label }})</h1>
+  <div class="summary-row">
+    <div class="stat"><span class="stat-label">注文数</span><span class="stat-value">{{ cycle_summary.ticket_count }}枚</span></div>
+    <div class="stat"><span class="stat-label">金額目安</span><span class="stat-value">¥{{ cycle_summary.total }}</span></div>
+  </div>
+  <p class="muted" style="margin-bottom:0;">※アプリ上の注文数からの目安です。実際のチケット受け渡し・給与天引きは松浦さん・陽介さんの受け渡し記録が正式なものになります。</p>
+</div>
+
+<div class="card">
+  <div class="dashboard-links">
+    <a class="btn primary dashboard-link" href="{{ url_for('order_page') }}">🍱 お弁当を注文する</a>
+    <a class="btn dashboard-link" href="{{ url_for('my_orders') }}">📋 注文履歴・費用を見る</a>
+  </div>
+</div>
+{% endblock %}
