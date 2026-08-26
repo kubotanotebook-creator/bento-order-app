@@ -83,13 +83,13 @@
 {% endif %}
 
 <div class="admin-tabs" role="tablist">
-  <button type="button" class="tab-btn" data-tab="proxy" role="tab">代理注文</button>
+  <button type="button" class="tab-btn" data-tab="orders" role="tab">チケット回収</button>
   <button type="button" class="tab-btn" data-tab="tickets" role="tab">チケット受け渡し</button>
-  <button type="button" class="tab-btn" data-tab="summary" role="tab">当日注文数確認</button>
-  <button type="button" class="tab-btn" data-tab="orders" role="tab">注文一覧</button>
+  <button type="button" class="tab-btn" data-tab="proxy" role="tab">代理注文</button>
+  <button type="button" class="tab-btn" data-tab="summary" role="tab">りりてー注文数確認</button>
+  <button type="button" class="tab-btn" data-tab="print" role="tab">弁当チェック表印刷</button>
   <button type="button" class="tab-btn" data-tab="menu" role="tab">メニュー登録</button>
   <button type="button" class="tab-btn" data-tab="settings" role="tab">締め切り時間設定</button>
-  <button type="button" class="tab-btn" data-tab="print" role="tab">弁当チェック表印刷</button>
 </div>
 
 <div class="tab-panel" data-tab="proxy">
@@ -244,8 +244,8 @@
 
 <div class="tab-panel" data-tab="summary">
   <div class="card">
-    <h1>当日注文数確認</h1>
-    <p class="muted">🍱 <strong>発注・FAX用</strong> — メニュー(唐揚げ・焼き魚など)ごとに何食かをまとめています。リリテイへの連絡はここを見てください。個人ごとのキャンセルやチケット確認は「注文一覧」タブで行います。</p>
+    <h1>りりてー注文数確認</h1>
+    <p class="muted">🍱 <strong>発注・FAX用</strong> — メニュー(唐揚げ・焼き魚など)ごとに何食かをまとめています。リリテイへの連絡はここを見てください。個人ごとのキャンセルやチケット確認は「チケット回収」タブで行います。</p>
     <p class="muted">日付をクリックすると内訳が開きます。本日の分は最初から開いています。未来の分は週ごと、過ぎた分は月ごとにまとまっているので、見たいところをクリックして開いてください。</p>
 
     {% if today_summary %}
@@ -264,7 +264,7 @@
         </button>
         <span class="date-counts">合計{{ week.count }}食</span>
       </div>
-      <div class="date-group-body" id="summary-week-{{ week.monday }}" hidden>
+      <div class="date-group-body nested-group-body" id="summary-week-{{ week.monday }}" hidden>
         {% for day in week.date_groups %}
           {{ summary_date_group(day.date, day.s) }}
         {% endfor %}
@@ -280,7 +280,7 @@
         </button>
         <span class="date-counts">合計{{ month.count }}食</span>
       </div>
-      <div class="date-group-body" id="summary-month-{{ month.month_key }}" hidden>
+      <div class="date-group-body nested-group-body" id="summary-month-{{ month.month_key }}" hidden>
         {% for day in month.date_groups %}
           {{ summary_date_group(day.date, day.s) }}
         {% endfor %}
@@ -345,8 +345,8 @@
 
 <div class="tab-panel" data-tab="orders">
   <div class="card">
-    <h1>注文一覧</h1>
-    <p class="muted">📋 <strong>個人ごとの運用管理用</strong> — 1人ずつの注文・キャンセル・チケット回収確認はここで行います。リリテイへの発注食数は「当日注文数確認」タブを見てください。</p>
+    <h1>チケット回収</h1>
+    <p class="muted">📋 <strong>個人ごとの運用管理用</strong> — 1人ずつの注文・キャンセル・チケット回収確認はここで行います。リリテイへの発注食数は「りりてー注文数確認」タブを見てください。</p>
     <p class="muted">日付をクリックすると内訳が開きます。本日の分は最初から開いています。未来の分は週ごと、過ぎた分は月ごとにまとまっているので、見たいところをクリックして開いてください。</p>
 
     {% if today_order_items %}
@@ -365,7 +365,7 @@
         </button>
         <span class="date-counts">合計{{ week.count }}食</span>
       </div>
-      <div class="date-group-body" id="orders-week-{{ week.monday }}" hidden>
+      <div class="date-group-body nested-group-body" id="orders-week-{{ week.monday }}" hidden>
         {% for day in week.date_groups %}
           {{ order_date_group(day.date, day.day_orders) }}
         {% endfor %}
@@ -381,7 +381,7 @@
         </button>
         <span class="date-counts">合計{{ month.count }}食</span>
       </div>
-      <div class="date-group-body" id="month-{{ month.month_key }}" hidden>
+      <div class="date-group-body nested-group-body" id="month-{{ month.month_key }}" hidden>
         {% for day in month.date_groups %}
           {{ order_date_group(day.date, day.day_orders) }}
         {% endfor %}

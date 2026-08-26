@@ -279,6 +279,11 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .date-toggle-btn.is-today { color: #d9480f; }
 .date-counts { font-size: 0.85rem; color: #666; }
 .date-group-body { margin-top: 10px; }
+/* Week/month wrapper bodies contain nested .date-group blocks (not a table),
+   so indent + a left rule marks them as "inside" the header you just opened —
+   without it, the nested dates read as a continuation of the same flat list. */
+.nested-group-body { padding-left: 16px; border-left: 2px solid #e2e4e8; }
+.nested-group-body .date-group:first-child { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e2e4e8; }
 
 .day-choices-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 4px; }
 .day-col-label { font-size: 0.8rem; color: #666; margin-bottom: 4px; font-weight: 600; }
