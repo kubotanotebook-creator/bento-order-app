@@ -252,6 +252,50 @@ def build_week_label(monday):
     return f"{monday.month}/{monday.day}({WEEKDAY_JP[monday.weekday()]}) 〜 {friday.month}/{friday.day}({WEEKDAY_JP[friday.weekday()]})"
 
 
+def split_dates_today_future_past(date_keys, today):
+    """date_keys: an iterable of 'YYYY-MM-DD' strings. Splits into
+    (today_key_or_None, future_dates_ascending, past_dates_descending) —
+    the shared shape behind both admin date-group listings (注文一覧 and
+    当日注文数確認): today stands alone, future is browsed soonest-first,
+    past is browsed most-recent-first."""
+    today_str = today.isoformat()
+    keys = list(date_keys)
+    today_key = today_str if today_str in keys else None
+    future_dates = sorted(d for d in keys if d > today_str)
+    past_dates = sorted((d for d in keys if d < today_str), reverse=True)
+    return today_key, future_dates, past_dates
+
+
+def group_dates_by_week(date_list):
+    """Ascending date strings -> [{"monday","label","dates":[...]}, ...],
+    one entry per Mon-Fri week, in the same order as date_list."""
+    weeks = []
+    current = None
+    for d_str in date_list:
+        monday = week_monday(date.fromisoformat(d_str))
+        monday_str = monday.isoformat()
+        if current is None or current["monday"] != monday_str:
+            current = {"monday": monday_str, "label": build_week_label(monday), "dates": []}
+            weeks.append(current)
+        current["dates"].append(d_str)
+    return weeks
+
+
+def group_dates_by_month(date_list):
+    """Date strings (any single order, consecutive same-month runs grouped)
+    -> [{"month_key","label","dates":[...]}, ...]. Used with past_dates,
+    which are already sorted most-recent-first."""
+    months = []
+    current = None
+    for d_str in date_list:
+        month_key = d_str[:7]
+        if current is None or current["month_key"] != month_key:
+            current = {"month_key": month_key, "label": f"{int(month_key[:4])}年{int(month_key[5:7])}月", "dates": []}
+            months.append(current)
+        current["dates"].append(d_str)
+    return months
+
+
 def _month_start(d):
     return d.replace(day=1)
 
@@ -831,39 +875,30 @@ def admin_dashboard():
     cancel_requests = [o for o in orders if o["cancel_requested_at"]]
     cancel_requests.sort(key=lambda o: o["cancel_requested_at"])
 
-    # 注文一覧 tab: today always leads, future days follow in their own
-    # date groups (soonest first), and everything before today is tucked
-    # away under collapsed month groups — otherwise months of history pile
-    # up above the dates anyone actually still cares about.
+    # Both 注文一覧 (per-person records) and 当日注文数確認 (per-dish
+    # totals) share the same "today leads, future grouped by week, past
+    # grouped by month" shape — otherwise either one just piles up months
+    # of history above the dates anyone still cares about. Note: the
+    # per-day payload dict key is "day_orders"/"s", never "items" — a dict
+    # has its own builtin .items() method, which Jinja's dot-notation would
+    # resolve before falling back to a same-named dict key, silently
+    # breaking `day.items` in the template.
     orders_by_date = {}
     for o in orders:
         orders_by_date.setdefault(o["order_date"], []).append(o)
 
-    today_order_items = orders_by_date.pop(today_str, [])
-    future_dates = sorted(d for d in orders_by_date if d > today_str)
-    past_dates = sorted((d for d in orders_by_date if d < today_str), reverse=True)
+    today_key, future_dates, past_dates = split_dates_today_future_past(orders_by_date.keys(), today)
+    today_order_items = orders_by_date.get(today_key, []) if today_key else []
 
-    # Note: dict key is "day_orders", not "items" — a dict has its own
-    # builtin .items() method, which Jinja's dot-notation would resolve
-    # before falling back to a same-named dict key, silently breaking
-    # `day.items` in the template.
-    future_date_groups = [{"date": d, "day_orders": orders_by_date[d]} for d in future_dates]
+    future_weeks = group_dates_by_week(future_dates)
+    for week in future_weeks:
+        week["date_groups"] = [{"date": d, "day_orders": orders_by_date[d]} for d in week["dates"]]
+        week["count"] = sum(o["quantity"] for d in week["dates"] for o in orders_by_date[d])
 
-    past_months = []
-    current_month = None
-    for d in past_dates:
-        month_key = d[:7]
-        if current_month is None or current_month["month_key"] != month_key:
-            current_month = {
-                "month_key": month_key,
-                "label": f"{int(month_key[:4])}年{int(month_key[5:7])}月",
-                "dates": [],
-                "count": 0,
-            }
-            past_months.append(current_month)
-        day_orders = orders_by_date[d]
-        current_month["dates"].append({"date": d, "day_orders": day_orders})
-        current_month["count"] += sum(o["quantity"] for o in day_orders)
+    past_months = group_dates_by_month(past_dates)
+    for month in past_months:
+        month["date_groups"] = [{"date": d, "day_orders": orders_by_date[d]} for d in month["dates"]]
+        month["count"] = sum(o["quantity"] for d in month["dates"] for o in orders_by_date[d])
 
     summary = {}
     for o in orders:
@@ -873,6 +908,19 @@ def admin_dashboard():
         s["item_counts"][o["item_display"]] = s["item_counts"].get(o["item_display"], 0) + o["quantity"]
         s["item_names"].setdefault(o["item_display"], []).append(o["employee_name"])
         s["cat_counts"][o["category"]] = s["cat_counts"].get(o["category"], 0) + o["quantity"]
+
+    summary_today_key, summary_future_dates, summary_past_dates = split_dates_today_future_past(summary.keys(), today)
+    today_summary = summary.get(summary_today_key) if summary_today_key else None
+
+    summary_future_weeks = group_dates_by_week(summary_future_dates)
+    for week in summary_future_weeks:
+        week["date_groups"] = [{"date": d, "s": summary[d]} for d in week["dates"]]
+        week["count"] = sum(summary[d]["count"] for d in week["dates"])
+
+    summary_past_months = group_dates_by_month(summary_past_dates)
+    for month in summary_past_months:
+        month["date_groups"] = [{"date": d, "s": summary[d]} for d in month["dates"]]
+        month["count"] = sum(summary[d]["count"] for d in month["dates"])
 
     known_employees = [
         r["employee_name"]
@@ -982,13 +1030,15 @@ def admin_dashboard():
         orders=orders,
         cancel_requests=cancel_requests,
         today_order_items=today_order_items,
-        future_date_groups=future_date_groups,
+        future_weeks=future_weeks,
         past_months=past_months,
         today_orders=today_orders,
         check_date=check_date_str,
         check_date_weekday=check_date_weekday,
         is_check_date_today=(check_date_str == today_str),
-        summary=summary,
+        today_summary=today_summary,
+        summary_future_weeks=summary_future_weeks,
+        summary_past_months=summary_past_months,
         settings=settings,
         today=today_str,
         category_codes=CATEGORY_CODES,
