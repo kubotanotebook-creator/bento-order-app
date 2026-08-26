@@ -372,10 +372,20 @@ def index():
         "AND o.order_date >= ? AND o.order_date <= ?",
         (employee_name, cycle_start.isoformat(), cycle_end.isoformat()),
     ).fetchall()
+    # Real deduction isn't per-ticket: 松浦さん/陽介さん hand out a fresh
+    # 10-ticket booklet (¥3,000) whenever the last one runs out, and that
+    # handout — not individual ticket use — is what's logged and billed.
+    # So round the cycle's ticket count UP to whole booklets rather than
+    # charging a smooth per-order amount.
+    cycle_ticket_count = sum(r["quantity"] for r in cycle_rows)
+    cycle_booklets = -(-cycle_ticket_count // 10)  # ceil division
+    price_per_booklet = settings["price"] * 10
     cycle_summary = {
         "label": f"{cycle_start.month}/{cycle_start.day}〜{cycle_end.month}/{cycle_end.day}",
-        "ticket_count": sum(r["quantity"] for r in cycle_rows),
-        "total": sum(r["unit_price"] * r["quantity"] for r in cycle_rows),
+        "ticket_count": cycle_ticket_count,
+        "booklets": cycle_booklets,
+        "price_per_booklet": price_per_booklet,
+        "total": cycle_booklets * price_per_booklet,
     }
 
     return render_template(
