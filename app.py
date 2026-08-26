@@ -74,6 +74,10 @@ CATEGORY_SHORT = {"fry": "フライ有り", "nofry": "なし", "veg": "野菜"}
 # without the label pushing the number outside the colored badge.
 CATEGORY_PRINT_SHORT = {"fry": "フライ", "nofry": "なし", "veg": "野菜"}
 WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
+# Same-day self-service cancel requests are only accepted before this time —
+# after it, the admin's morning attendance-check process has usually already
+# started, so further changes need to go through 松浦さん/陽介さん directly.
+SAME_DAY_CANCEL_CUTOFF = time(9, 0)
 
 
 @app.template_filter("weekday_jp")
@@ -518,26 +522,44 @@ def _week_glance(db, employee_name, monday):
         "AND status = 'ordered'",
         (employee_name, monday.isoformat(), friday.isoformat()),
     ).fetchall()
-    selection = {o["order_date"]: o["menu_item_id"] for o in order_rows}
+    orders_by_date = {o["order_date"]: o for o in order_rows}
 
+    now = now_jst()
     days = []
     for i in range(5):
         d = monday + timedelta(days=i)
         d_str = d.isoformat()
         cats = menu_by_date.get(d_str, {})
-        selected_item_id = selection.get(d_str)
+        order = orders_by_date.get(d_str)
+        selected_item_id = order["menu_item_id"] if order else None
         selected_code = None
         for code, item in cats.items():
             if item["id"] == selected_item_id:
                 selected_code = code
+        is_today = d == today
+        is_past = d < today
+        cancel_requested = bool(order and order["cancel_requested_at"])
+        # Mirrors order_cancel_day()'s own rules: a past day can't be
+        # cancelled (already happened), and today only counts down to the
+        # 9:00 same-day cutoff — after that, changes go through the admin's
+        # morning process instead.
+        can_cancel = (
+            selected_code is not None
+            and not is_past
+            and not cancel_requested
+            and (not is_today or now.time() < SAME_DAY_CANCEL_CUTOFF)
+        )
         days.append({
             "date": d_str,
             "mmdd": f"{d.month}/{d.day}",
             "weekday": WEEKDAY_JP[d.weekday()],
             "cats": cats,
             "selected_code": selected_code,
-            "is_today": d == today,
-            "is_past": d < today,
+            "is_today": is_today,
+            "is_past": is_past,
+            "paid": bool(order["paid"]) if order else False,
+            "cancel_requested": cancel_requested,
+            "can_cancel": can_cancel,
         })
     return days
 
@@ -713,21 +735,26 @@ def order_week():
 
 @app.route("/order/cancel-day", methods=["POST"])
 def order_cancel_day():
-    """Let an employee flag their own order for a future day as "please
-    cancel", even after that week's ordering deadline has passed. This
-    doesn't cancel right away — the admin approves it from the dashboard —
-    because by the time the deadline has passed, the admin has usually
-    already printed that week's paper checklist, and a silent in-app
-    cancellation would leave the paper out of sync with reality. Same-day
-    changes still go through the admin's morning process, so "today" is
-    deliberately excluded here (order_date must be strictly after today)."""
+    """Let an employee flag their own order as "please cancel", for a future
+    day (even after that week's ordering deadline has passed) or for today
+    itself before the 9:00 same-day cutoff. This doesn't cancel right away —
+    the admin approves it from the dashboard — because by the time the
+    deadline has passed, the admin has usually already printed that week's
+    paper checklist, and a silent in-app cancellation would leave the paper
+    out of sync with reality. A day that has already passed can never be
+    cancelled, and a same-day request past 9:00 is rejected since the
+    admin's morning process has usually already started by then."""
     employee_name = session.get("employee_name")
     if not employee_name:
         return redirect(url_for("index"))
 
     order_date = request.form.get("order_date", "")
-    if order_date <= today_jst().isoformat():
-        return redirect(url_for("order_page"))
+    today_str = today_jst().isoformat()
+    if order_date < today_str:
+        return redirect(request.referrer or url_for("index"))
+    if order_date == today_str and now_jst().time() >= SAME_DAY_CANCEL_CUTOFF:
+        flash("本日分のキャンセル希望は9:00までです。それ以降は松浦さんか陽介さんに直接お伝えください。", "error")
+        return redirect(request.referrer or url_for("index"))
 
     db = get_db()
     existing = db.execute(
@@ -741,7 +768,7 @@ def order_cancel_day():
         )
         db.commit()
         flash(f"{order_date} のキャンセル希望を送信しました。松浦さんか陽介さんが確認後、正式にキャンセルされます。", "success")
-    return redirect(url_for("order_page"))
+    return redirect(request.referrer or url_for("index"))
 
 
 @app.route("/my-orders")
@@ -788,12 +815,25 @@ def my_orders():
 
     total = sum(r["unit_price"] * r["quantity"] for r in rows)
     unpaid_total = sum(r["unit_price"] * r["quantity"] for r in rows if not r["paid"])
+
+    # A second, simpler view of the same orders for "what did I eat and
+    # when" browsing: month, then week within the month, newest first
+    # throughout (rows/order_dates are already DESC from the query above).
+    rows_by_date = {r["order_date"]: r for r in rows}
+    order_dates = [r["order_date"] for r in rows]
+    history_months = group_dates_by_month(order_dates)
+    for month in history_months:
+        month["weeks"] = group_dates_by_week(month["dates"])
+        for week in month["weeks"]:
+            week["orders"] = [rows_by_date[d] for d in week["dates"]]
+
     return render_template(
         "my_orders.html",
         employee_name=employee_name,
         cycles=cycles,
         total=total,
         unpaid_total=unpaid_total,
+        history_months=history_months,
     )
 
 

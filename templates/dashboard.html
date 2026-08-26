@@ -16,6 +16,16 @@
       {% if day.selected_code %}
         <div class="glance-dot {{ day.selected_code }}" title="{{ category_labels[day.selected_code] }}">◎</div>
         <div class="glance-cat">{{ category_labels[day.selected_code] }}</div>
+        {% if day.is_past %}
+          <div class="glance-status">{{ 'チケット回収済み' if day.paid else 'チケット回収待ち' }}</div>
+        {% elif day.cancel_requested %}
+          <div class="glance-status">キャンセル希望済み</div>
+        {% elif day.can_cancel %}
+          <form method="post" action="{{ url_for('order_cancel_day') }}" onsubmit="return confirm('{{ day.date }}のキャンセルを希望しますか?松浦さんか陽介さんが確認後、正式にキャンセルされます。');">
+            <input type="hidden" name="order_date" value="{{ day.date }}">
+            <button type="submit" class="glance-cancel-btn">キャンセル</button>
+          </form>
+        {% endif %}
       {% else %}
         <div class="glance-dot none" title="注文なし">−</div>
         <div class="glance-cat">なし</div>

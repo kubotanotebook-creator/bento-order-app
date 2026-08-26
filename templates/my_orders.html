@@ -58,4 +58,62 @@
   <p class="muted">注文履歴がありません。</p>
 </div>
 {% endfor %}
+
+{% if history_months %}
+<div class="card">
+  <h1>月ごとの注文履歴</h1>
+  <p class="muted">過去に注文した内容を月ごと・週ごとにまとめています。クリックすると開きます。</p>
+  {% for month in history_months %}
+  <div class="date-group">
+    <div class="date-group-header">
+      <button type="button" class="date-toggle-btn" data-target="hist-month-{{ month.month_key }}">
+        <span class="chevron">▶</span> {{ month.label }}
+      </button>
+    </div>
+    <div class="date-group-body nested-group-body" id="hist-month-{{ month.month_key }}" hidden>
+      {% for week in month.weeks %}
+      <div class="date-group">
+        <div class="date-group-header">
+          <button type="button" class="date-toggle-btn" data-target="hist-week-{{ week.monday }}">
+            <span class="chevron">▶</span> {{ week.label }}
+          </button>
+        </div>
+        <div class="date-group-body nested-group-body" id="hist-week-{{ week.monday }}" hidden>
+          <div class="table-scroll">
+          <table class="table">
+            <thead><tr><th>日付</th><th>メニュー</th><th>金額</th><th>支払状況</th></tr></thead>
+            <tbody>
+              {% for o in week.orders %}
+              <tr>
+                <td data-label="日付">{{ o.order_date }}({{ o.order_date|weekday_jp }})</td>
+                <td data-label="メニュー">{{ o.item_display }}</td>
+                <td data-label="金額">¥{{ o.unit_price * o.quantity }}</td>
+                <td data-label="支払状況">{% if o.paid %}<span class="badge open">精算済</span>{% else %}<span class="badge closed">未精算</span>{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+(function () {
+  document.querySelectorAll('.date-toggle-btn').forEach(function (btn) {
+    var target = document.getElementById(btn.dataset.target);
+    if (!target) return;
+    btn.addEventListener('click', function () {
+      var willOpen = target.hidden;
+      target.hidden = !willOpen;
+      btn.classList.toggle('is-open', willOpen);
+    });
+  });
+})();
+</script>
 {% endblock %}
