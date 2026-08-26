@@ -993,6 +993,33 @@ def admin_dashboard():
         ).fetchall()
     ]
 
+    # Payroll-deduction summary: every handout grouped into the same
+    # 16th-to-15th cycle used for the employee-side dashboard card, broken
+    # down per employee so whoever processes payroll can read each person's
+    # deduction straight off this screen instead of counting rows by hand.
+    price_per_booklet = settings["price"] * 10
+    all_issuances = db.execute("SELECT * FROM ticket_issuances ORDER BY issued_at").fetchall()
+    payroll_cycles_by_key = {}
+    for row in all_issuances:
+        start, end = payroll_cycle(date.fromisoformat(row["issued_at"]))
+        cyc = payroll_cycles_by_key.setdefault((start, end), {})
+        emp = cyc.setdefault(row["employee_name"], {"booklets": 0})
+        emp["booklets"] += 1
+
+    payroll_deduction_cycles = []
+    for (cyc_start, cyc_end) in sorted(payroll_cycles_by_key.keys(), reverse=True):
+        emp_map = payroll_cycles_by_key[(cyc_start, cyc_end)]
+        employees_rows = [
+            {"name": name, "booklets": info["booklets"], "total": info["booklets"] * price_per_booklet}
+            for name, info in sorted(emp_map.items())
+        ]
+        payroll_deduction_cycles.append({
+            "label": f"{cyc_start.month}/{cyc_start.day}〜{cyc_end.month}/{cyc_end.day}",
+            "employees": employees_rows,
+            "total_booklets": sum(e["booklets"] for e in employees_rows),
+            "total_amount": sum(e["total"] for e in employees_rows),
+        })
+
     # Each known name's current ticket status, for the 受け渡し記録 form's
     # employee dropdown — a plain-text field risked a handout landing on
     # the wrong person (e.g. a typo, or picking the wrong "田中"), and
@@ -1098,6 +1125,7 @@ def admin_dashboard():
         registered_employees=registered_employees,
         ticket_issuances=ticket_issuances,
         ticket_dropdown_options=ticket_dropdown_options,
+        payroll_deduction_cycles=payroll_deduction_cycles,
         proxy_menu_map=proxy_menu_map,
         weekday_labels=weekday_labels,
         week_deadlines=week_deadlines,

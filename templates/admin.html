@@ -190,6 +190,41 @@
     <p class="muted">まだ記録がありません。</p>
     {% endif %}
   </div>
+
+  <div class="card">
+    <h1>月ごとの天引き集計(給与処理用)</h1>
+    <p class="muted">給与締め(16日〜翌15日)ごとに、社員別の受け渡し冊数と天引き額をまとめています。給与処理の際にご利用ください。</p>
+    {% if payroll_deduction_cycles %}
+      {% for cyc in payroll_deduction_cycles %}
+      <div class="date-group">
+        <div class="date-group-header">
+          <button type="button" class="date-toggle-btn {{ 'is-today' if loop.first }}" data-target="payroll-{{ loop.index }}">
+            <span class="chevron">▶</span> {{ cyc.label }}
+          </button>
+          <span class="date-counts">合計{{ cyc.total_booklets }}冊・¥{{ cyc.total_amount }}</span>
+        </div>
+        <div class="date-group-body" id="payroll-{{ loop.index }}" hidden>
+          <div class="table-scroll">
+          <table class="table">
+            <thead><tr><th>氏名</th><th>受け渡し冊数</th><th>天引き額</th></tr></thead>
+            <tbody>
+              {% for e in cyc.employees %}
+              <tr>
+                <td data-label="氏名">{{ e.name }}</td>
+                <td data-label="受け渡し冊数">{{ e.booklets }}冊</td>
+                <td data-label="天引き額">¥{{ e.total }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <p class="muted">まだ受け渡し記録がありません。</p>
+    {% endif %}
+  </div>
 </div>
 
 {% macro summary_date_group(d, s, is_today=False) %}
