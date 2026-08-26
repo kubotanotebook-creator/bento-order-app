@@ -65,7 +65,7 @@
         <td data-label="氏名">{{ o.employee_name }}</td>
         <td data-label="区分">{{ o.item_display }}</td>
         <td data-label="操作">
-          <form method="post" action="{{ url_for('admin_approve_cancel_request') }}" class="inline-form" style="margin:0;" onsubmit="return confirm('{{ o.employee_name }}さんの{{ o.order_date }}の注文をキャンセルしますか?');">
+          <form method="post" action="{{ url_for('admin_approve_cancel_request') }}" class="inline-form" style="margin:0;" onsubmit="return confirm('{{ o.employee_name }}さんの{{ o.order_date }}の注文をキャンセルします。\n紙のチェック表もあわせて修正してください。\nよろしいですか?');">
             <input type="hidden" name="order_id" value="{{ o.id }}">
             <button type="submit" class="btn small primary">承認してキャンセル</button>
           </form>
@@ -89,7 +89,7 @@
   <button type="button" class="tab-btn" data-tab="summary" role="tab">りりてー注文数確認</button>
   <button type="button" class="tab-btn" data-tab="print" role="tab">弁当チェック表印刷</button>
   <button type="button" class="tab-btn" data-tab="menu" role="tab">メニュー登録</button>
-  <button type="button" class="tab-btn" data-tab="settings" role="tab">締め切り時間設定</button>
+  <button type="button" class="tab-btn" data-tab="settings" role="tab">設定</button>
 </div>
 
 <div class="tab-panel" data-tab="proxy">
@@ -146,33 +146,6 @@
     {% else %}
     <p class="muted">メニューが登録されている週がありません。</p>
     {% endfor %}
-  </div>
-
-  <div class="card">
-    <h1>生年月日の登録リセット</h1>
-    <p class="muted">社員用の注文画面は、なりすまし防止のため初回ログイン時の生年月日(月日)を覚えて次回以降と照合しています。本人が生年月日を間違えて登録してしまいログインできなくなった場合、ここでリセットすると次回ログイン時に再登録できます。</p>
-    {% if registered_employees %}
-    <div class="table-scroll">
-    <table class="table">
-      <thead><tr><th>氏名</th><th>操作</th></tr></thead>
-      <tbody>
-        {% for name in registered_employees %}
-        <tr>
-          <td data-label="氏名">{{ name }}</td>
-          <td data-label="操作">
-            <form method="post" action="{{ url_for('admin_reset_employee_birthday') }}" onsubmit="return confirm('{{ name }}さんの生年月日の登録をリセットしますか?');">
-              <input type="hidden" name="employee_name" value="{{ name }}">
-              <button type="submit" class="btn small">リセット</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% else %}
-    <p class="muted">まだ誰も生年月日を登録していません。</p>
-    {% endif %}
   </div>
 </div>
 
@@ -422,7 +395,13 @@
         {% for item in items %}
           <tr>
             <td data-label="区分">{{ category_labels[item.category] }}</td>
-            <td data-label="メニュー名">{{ item.name }}</td>
+            <td data-label="メニュー名">
+              <form method="post" action="{{ url_for('admin_update_menu_item') }}" class="inline-form" style="margin:0;">
+                <input type="hidden" name="menu_item_id" value="{{ item.id }}">
+                <input type="text" name="name" value="{{ item.name }}" required size="34" style="min-width:340px; margin-bottom:0;">
+                <button type="submit" class="btn small primary">保存</button>
+              </form>
+            </td>
             <td data-label="">
               <form method="post" action="{{ url_for('admin_delete_menu') }}" onsubmit="return confirm('削除しますか?');">
                 <input type="hidden" name="menu_item_id" value="{{ item.id }}">
@@ -492,6 +471,33 @@
     </div>
     {% else %}
     <p class="muted">メニューが登録されている週がありません。</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h1>生年月日の登録リセット</h1>
+    <p class="muted">社員用の注文画面は、なりすまし防止のため初回ログイン時の生年月日(月日)を覚えて次回以降と照合しています。本人が生年月日を間違えて登録してしまいログインできなくなった場合、ここでリセットすると次回ログイン時に再登録できます。</p>
+    {% if registered_employees %}
+    <div class="table-scroll">
+    <table class="table">
+      <thead><tr><th>氏名</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for name in registered_employees %}
+        <tr>
+          <td data-label="氏名">{{ name }}</td>
+          <td data-label="操作">
+            <form method="post" action="{{ url_for('admin_reset_employee_birthday') }}" onsubmit="return confirm('{{ name }}さんの生年月日の登録をリセットしますか?');">
+              <input type="hidden" name="employee_name" value="{{ name }}">
+              <button type="submit" class="btn small">リセット</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="muted">まだ誰も生年月日を登録していません。</p>
     {% endif %}
   </div>
 </div>

@@ -466,12 +466,21 @@ def index():
         "AND order_date >= ? AND order_date <= ?",
         (employee_name, cycle_start.isoformat(), cycle_end.isoformat()),
     ).fetchone()["c"]
+    cycle_issuance_dates = [
+        r["issued_at"]
+        for r in db.execute(
+            "SELECT issued_at FROM ticket_issuances WHERE employee_name = ? "
+            "AND issued_at >= ? AND issued_at <= ? ORDER BY issued_at",
+            (employee_name, cycle_start.isoformat(), cycle_end.isoformat()),
+        ).fetchall()
+    ]
     cycle_summary = {
         "label": f"{cycle_start.month}/{cycle_start.day}〜{cycle_end.month}/{cycle_end.day}",
         "booklets": cycle_booklets,
         "total": cycle_booklets * price_per_booklet,
         "price_per_booklet": price_per_booklet,
         "order_count": cycle_order_count,
+        "issuance_dates": cycle_issuance_dates,
     }
 
     return render_template(
@@ -480,6 +489,7 @@ def index():
         this_week_label=build_week_label(this_monday),
         this_week_days=this_week_days,
         next_week_status=next_week_status,
+        next_week_days=next_week_days,
         ticket_status=ticket_status,
         cycle_summary=cycle_summary,
         category_labels=CATEGORY_LABELS,
@@ -1180,6 +1190,25 @@ def admin_delete_menu():
     return redirect(url_for("admin_dashboard"))
 
 
+@app.route("/admin/menu/update", methods=["POST"])
+def admin_update_menu_item():
+    """Rename a registered menu item in place. Existing orders reference it
+    by menu_item_id and look up the name live via JOIN, so this immediately
+    corrects the name everywhere it's displayed (past and future)."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    menu_item_id = request.form.get("menu_item_id")
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("メニュー名を入力してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+    db.execute("UPDATE menu_items SET name = ? WHERE id = ?", (name, menu_item_id))
+    db.commit()
+    flash("メニュー名を更新しました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
 def admin_upsert_order(db, settings, order_date, employee_name, category):
     """Create or overwrite the employee's active order for one day, as the
     admin. Shared by the single-day and whole-week proxy forms. Returns True
@@ -1360,7 +1389,7 @@ def admin_approve_cancel_request():
         (request.form.get("order_id"),),
     )
     db.commit()
-    flash("キャンセル希望を承認し、注文をキャンセルしました。", "success")
+    flash("キャンセル希望を承認し、注文をキャンセルしました。紙のチェック表もあわせて修正してください。", "warning")
     return redirect(url_for("admin_dashboard"))
 
 

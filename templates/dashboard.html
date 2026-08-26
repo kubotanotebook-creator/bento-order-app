@@ -35,11 +35,33 @@
   {% if not next_week_status.menu_exists %}
     <p class="muted" style="margin-bottom:0;">まだメニューが登録されていません。</p>
   {% elif next_week_status.ordered_count == 5 %}
-    <p style="margin-bottom:0;"><span class="badge open">注文済み</span> 5日分すべて注文済みです。</p>
+    <p style="margin-bottom:5px;"><span class="badge open">注文済み</span> 5日分すべて注文済みです。</p>
   {% elif next_week_status.ordered_count > 0 %}
-    <p style="margin-bottom:0;"><span class="badge closed">一部のみ</span> {{ next_week_status.ordered_count }}/5日分だけ注文しています。{% if next_week_status.open %}締切({{ next_week_status.deadline_str }})までに残りも確認してください。{% endif %}</p>
+    <p style="margin-bottom:5px;"><span class="badge closed">一部のみ</span> {{ next_week_status.ordered_count }}/5日分だけ注文しています。{% if next_week_status.open %}締切({{ next_week_status.deadline_str }})までに残りも確認してください。{% endif %}</p>
   {% else %}
-    <p style="margin-bottom:0;"><span class="badge closed">未注文</span> まだ来週分を注文していません。{% if next_week_status.open %}締切は {{ next_week_status.deadline_str }} です。{% else %}締切は過ぎています。{% endif %}</p>
+    <p style="margin-bottom:5px;"><span class="badge closed">未注文</span> まだ来週分を注文していません。{% if next_week_status.open %}締切は {{ next_week_status.deadline_str }} です。{% else %}締切は過ぎています。{% endif %}</p>
+  {% endif %}
+  {% if next_week_status.menu_exists %}
+  <button type="button" class="date-toggle-btn" data-target="next-week-glance" style="margin-bottom:0;">
+    <span class="chevron">▶</span> 来週の内訳を見る
+  </button>
+  <div class="date-group-body" id="next-week-glance" hidden>
+    <div class="week-glance">
+      {% for day in next_week_days %}
+      <div class="glance-cell">
+        <div class="glance-day">{{ day.weekday }}</div>
+        <div class="glance-date">{{ day.mmdd }}</div>
+        {% if day.selected_code %}
+          <div class="glance-dot {{ day.selected_code }}" title="{{ category_labels[day.selected_code] }}">◎</div>
+          <div class="glance-cat">{{ category_labels[day.selected_code] }}</div>
+        {% else %}
+          <div class="glance-dot none" title="注文なし">−</div>
+          <div class="glance-cat">なし</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
   {% endif %}
 </div>
 
@@ -63,6 +85,7 @@
     <div class="stat"><span class="stat-label">天引き予定額</span><span class="stat-value">¥{{ cycle_summary.total }}</span></div>
   </div>
   <p class="muted" style="margin-bottom:0;">松浦さん・陽介さんの受け渡し記録(10枚1冊 ¥{{ cycle_summary.price_per_booklet }})にもとづく金額です。</p>
+  <p class="muted" style="margin-bottom:0;">受け渡し日: {% for d in cycle_summary.issuance_dates %}{{ d }}({{ d|weekday_jp }}){% if not loop.last %}、{% endif %}{% endfor %}</p>
   {% else %}
   <p class="muted" style="margin-bottom:0;">この期間の受け渡し記録はまだありません(参考: この期間の注文数 {{ cycle_summary.order_count }}件)。</p>
   {% endif %}
@@ -74,4 +97,18 @@
     <a class="btn dashboard-link" href="{{ url_for('my_orders') }}">📋 注文履歴・費用を見る</a>
   </div>
 </div>
+
+<script>
+(function () {
+  document.querySelectorAll('.date-toggle-btn').forEach(function (btn) {
+    var target = document.getElementById(btn.dataset.target);
+    if (!target) return;
+    btn.addEventListener('click', function () {
+      var willOpen = target.hidden;
+      target.hidden = !willOpen;
+      btn.classList.toggle('is-open', willOpen);
+    });
+  });
+})();
+</script>
 {% endblock %}

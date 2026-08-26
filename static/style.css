@@ -291,6 +291,7 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 0.9rem; }
 .flash-success { background: #e6f4ea; color: #1a7f37; }
 .flash-error { background: #fbe9e7; color: #c62828; }
+.flash-warning { background: #fff4e0; color: #8a5a00; border: 1px solid #f0c869; }
 
 .is-cancelled { text-decoration: line-through; color: #aaa; }
 
