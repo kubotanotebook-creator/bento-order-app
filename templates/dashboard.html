@@ -13,7 +13,10 @@
     <div class="glance-cell {{ 'is-today' if day.is_today }}">
       <div class="glance-day">{{ day.weekday }}</div>
       <div class="glance-date">{{ day.mmdd }}</div>
-      {% if day.selected_code %}
+      {% if day.closed_reason %}
+        <div class="glance-dot closed-day" title="{{ day.closed_reason }}">休</div>
+        <div class="glance-cat">{{ day.closed_reason }}</div>
+      {% elif day.selected_code %}
         <div class="glance-dot {{ day.selected_code }}" title="{{ category_labels[day.selected_code] }}">◎</div>
         <div class="glance-cat">{{ category_labels[day.selected_code] }}</div>
         {% if day.is_past %}
@@ -44,10 +47,10 @@
   <h1 style="margin-top:0;">来週({{ next_week_status.label }})</h1>
   {% if not next_week_status.menu_exists %}
     <p class="muted" style="margin-bottom:0;">まだメニューが登録されていません。</p>
-  {% elif next_week_status.ordered_count == 5 %}
-    <p style="margin-bottom:5px;"><span class="badge open">注文済み</span> 5日分すべて注文済みです。</p>
+  {% elif next_week_status.ordered_count == next_week_status.orderable_count %}
+    <p style="margin-bottom:5px;"><span class="badge open">注文済み</span> {{ next_week_status.orderable_count }}日分すべて注文済みです。</p>
   {% elif next_week_status.ordered_count > 0 %}
-    <p style="margin-bottom:5px;"><span class="badge closed">一部のみ</span> {{ next_week_status.ordered_count }}/5日分だけ注文しています。{% if next_week_status.open %}締切({{ next_week_status.deadline_str }})までに残りも確認してください。{% endif %}</p>
+    <p style="margin-bottom:5px;"><span class="badge closed">一部のみ</span> {{ next_week_status.ordered_count }}/{{ next_week_status.orderable_count }}日分だけ注文しています。{% if next_week_status.open %}締切({{ next_week_status.deadline_str }})までに残りも確認してください。{% endif %}</p>
   {% else %}
     <p style="margin-bottom:5px;"><span class="badge closed">未注文</span> まだ来週分を注文していません。{% if next_week_status.open %}締切は {{ next_week_status.deadline_str }} です。{% else %}締切は過ぎています。{% endif %}</p>
   {% endif %}
@@ -61,7 +64,10 @@
       <div class="glance-cell">
         <div class="glance-day">{{ day.weekday }}</div>
         <div class="glance-date">{{ day.mmdd }}</div>
-        {% if day.selected_code %}
+        {% if day.closed_reason %}
+          <div class="glance-dot closed-day" title="{{ day.closed_reason }}">休</div>
+          <div class="glance-cat">{{ day.closed_reason }}</div>
+        {% elif day.selected_code %}
           <div class="glance-dot {{ day.selected_code }}" title="{{ category_labels[day.selected_code] }}">◎</div>
           <div class="glance-cat">{{ category_labels[day.selected_code] }}</div>
         {% else %}

@@ -420,6 +420,39 @@
     </form>
     <p class="muted">入力した項目だけ登録・上書きされます(空欄は無視されます)。登録すると、次回はこの日の翌営業日が自動で入力されます。</p>
 
+    <h3>定休日(注文できない日)の設定</h3>
+    <form method="post" action="{{ url_for('admin_close_day') }}" class="inline-form">
+      <input type="date" name="item_date" value="{{ today }}" required style="width:auto; margin-bottom:0;">
+      <input type="text" name="reason" placeholder="定休日" size="12" style="width:auto; margin-bottom:0;">
+      <button type="submit" class="btn primary">定休日にする</button>
+    </form>
+    <p class="muted">定休日にした日は、社員の注文画面で「お弁当がありません」と表示され、注文できなくなります。その日の登録済みメニューはあわせて削除されます(注文が残っている日は、先にキャンセルしてください)。</p>
+
+    {% if upcoming_closed_days %}
+    <div class="table-scroll">
+    <table class="table">
+      <thead><tr><th>定休日</th><th>理由</th><th></th></tr></thead>
+      <tbody>
+      {% for d, reason in upcoming_closed_days %}
+        <tr>
+          <td data-label="定休日">{{ d }}({{ d|weekday_jp }})</td>
+          <td data-label="理由">{{ reason }}</td>
+          <td data-label="">
+            <form method="post" action="{{ url_for('admin_close_day') }}" onsubmit="return confirm('{{ d }}を定休日ではなくしますか?');">
+              <input type="hidden" name="item_date" value="{{ d }}">
+              <input type="hidden" name="action" value="open">
+              <button type="submit" class="btn small">定休日をやめる</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="muted">これから先に登録されている定休日はありません。</p>
+    {% endif %}
+
     {% for d, items in menu_by_date.items() %}
     <div class="summary-block">
       <h3>{{ d }}</h3>

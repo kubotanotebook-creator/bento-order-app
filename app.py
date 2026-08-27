@@ -171,6 +171,16 @@ def init_db():
             quantity INTEGER NOT NULL DEFAULT 10,
             created_at TEXT NOT NULL
         );
+
+        -- Days リリテイ doesn't deliver (定休日 / 祝日). The monthly PDF writes
+        -- the reason into the menu cells for those days, which would otherwise
+        -- be imported as if it were a dish name and offered as an orderable
+        -- choice ("フライあり: 定休日"). A date listed here is shown as closed
+        -- and cannot be ordered.
+        CREATE TABLE IF NOT EXISTS closed_days (
+            item_date TEXT PRIMARY KEY,
+            reason TEXT NOT NULL DEFAULT '定休日'
+        );
         """
     )
     db.commit()
@@ -212,6 +222,56 @@ def get_settings():
     db = get_db()
     row = db.execute("SELECT * FROM settings WHERE id = 1").fetchone()
     return row
+
+
+# ---------- Closed days (定休日) ----------
+
+# Words リリテイ writes into a menu cell to mean "no delivery this day". Holiday
+# names (敬老の日 etc.) are deliberately NOT listed: they appear alongside these
+# markers on the same date, and a name alone is too easy to confuse with a real
+# dish. One marker anywhere in the day's cells closes the whole day.
+CLOSED_DAY_MARKERS = ("定休日", "休業", "お休み", "弁当なし", "配達なし")
+DEFAULT_CLOSED_REASON = "定休日"
+
+
+def looks_like_closed_day(names):
+    """True if any of this date's parsed cell texts marks it as a closed day."""
+    for name in names:
+        if name and any(marker in name for marker in CLOSED_DAY_MARKERS):
+            return True
+    return False
+
+
+def get_closed_days(db, start=None, end=None):
+    """{date_str: reason} for closed days, optionally limited to a date range."""
+    if start and end:
+        rows = db.execute(
+            "SELECT * FROM closed_days WHERE item_date >= ? AND item_date <= ?",
+            (start, end),
+        ).fetchall()
+    else:
+        rows = db.execute("SELECT * FROM closed_days").fetchall()
+    return {r["item_date"]: r["reason"] for r in rows}
+
+
+def set_day_closed(db, item_date, reason=DEFAULT_CLOSED_REASON):
+    """Mark a date closed and drop the junk menu items the PDF import created
+    for it. Menu items already referenced by an order are left alone (the
+    foreign key forbids deleting them); the day still reads as closed."""
+    db.execute(
+        "INSERT INTO closed_days (item_date, reason) VALUES (?, ?) "
+        "ON CONFLICT(item_date) DO UPDATE SET reason = excluded.reason",
+        (item_date, reason or DEFAULT_CLOSED_REASON),
+    )
+    db.execute(
+        "DELETE FROM menu_items WHERE item_date = ? AND id NOT IN "
+        "(SELECT menu_item_id FROM orders)",
+        (item_date,),
+    )
+
+
+def set_day_open(db, item_date):
+    db.execute("DELETE FROM closed_days WHERE item_date = ?", (item_date,))
 
 
 # ---------- Week / deadline helpers ----------
@@ -443,12 +503,17 @@ def index():
     next_week_days = _week_glance(db, employee_name, next_monday)
     next_week_menu_exists = any(d["cats"] for d in next_week_days)
     next_week_ordered = sum(1 for d in next_week_days if d["selected_code"])
+    # 定休日 can't be ordered, so "all ordered" is measured against the days
+    # that actually have a bento — otherwise a week containing a holiday would
+    # permanently read as "一部のみ" and nag someone who ordered everything.
+    next_week_orderable = sum(1 for d in next_week_days if not d["closed_reason"])
     next_week_status = {
         "label": build_week_label(next_monday),
         "menu_exists": next_week_menu_exists,
         "open": week_is_open(db, next_monday, settings),
         "deadline_str": get_week_deadline(db, next_monday, settings).strftime("%m/%d(%a) %H:%M"),
         "ordered_count": next_week_ordered,
+        "orderable_count": next_week_orderable,
     }
 
     ticket_status = employee_ticket_status(db, employee_name, today)
@@ -523,13 +588,14 @@ def _week_glance(db, employee_name, monday):
         (employee_name, monday.isoformat(), friday.isoformat()),
     ).fetchall()
     orders_by_date = {o["order_date"]: o for o in order_rows}
+    closed_days = get_closed_days(db, monday.isoformat(), friday.isoformat())
 
     now = now_jst()
     days = []
     for i in range(5):
         d = monday + timedelta(days=i)
         d_str = d.isoformat()
-        cats = menu_by_date.get(d_str, {})
+        cats = {} if d_str in closed_days else menu_by_date.get(d_str, {})
         order = orders_by_date.get(d_str)
         selected_item_id = order["menu_item_id"] if order else None
         selected_code = None
@@ -554,6 +620,7 @@ def _week_glance(db, employee_name, monday):
             "mmdd": f"{d.month}/{d.day}",
             "weekday": WEEKDAY_JP[d.weekday()],
             "cats": cats,
+            "closed_reason": closed_days.get(d_str),
             "selected_code": selected_code,
             "is_today": is_today,
             "is_past": is_past,
@@ -601,9 +668,14 @@ def order_page():
     today = today_jst()
     menu_by_date, my_selection, my_cancel_requested = _load_employee_menu_context(db, employee_name, today)
 
+    # Closed days still get a row on the ordering page (greyed out, no choices)
+    # rather than being dropped: a silently missing weekday reads as "did I
+    # forget to order Monday?", while an explicit 定休日 answers the question.
+    closed_days = get_closed_days(db, today.isoformat(), "9999-12-31")
+
     # Group dates into weeks (Mon..Fri)
     weeks = {}
-    for d_str in sorted(menu_by_date.keys()):
+    for d_str in sorted(set(menu_by_date.keys()) | set(closed_days.keys())):
         d = date.fromisoformat(d_str)
         monday = week_monday(d)
         weeks.setdefault(monday, []).append(d)
@@ -613,7 +685,7 @@ def order_page():
         days = []
         for d in weeks[monday]:
             d_str = d.isoformat()
-            cats = menu_by_date[d_str]
+            cats = {} if d_str in closed_days else menu_by_date.get(d_str, {})
             selected_item_id = my_selection.get(d_str)
             selected_code = None
             for code, item in cats.items():
@@ -624,6 +696,7 @@ def order_page():
                 "mmdd": f"{d.month}/{d.day}",
                 "weekday": WEEKDAY_JP[d.weekday()],
                 "cats": cats,
+                "closed_reason": closed_days.get(d_str),
                 "selected_code": selected_code,
                 "cancel_requested": d_str in my_cancel_requested,
                 "is_past": d < today,
@@ -675,11 +748,17 @@ def order_week():
         flash("この週の注文受付は終了しています。当日分の追加・変更をご希望の場合は、当日9:00までに松浦さんか陽介さんまでメモでお伝えください。", "error")
         return redirect(url_for("order_page"))
 
+    # A day can be marked closed after someone opened the ordering page, so
+    # re-check here rather than trusting the form to only offer open days.
+    closed_days = get_closed_days(db, monday.isoformat(), (monday + timedelta(days=4)).isoformat())
+
     for i in range(5):
         d = monday + timedelta(days=i)
         d_str = d.isoformat()
         field = f"day_{d_str}"
         if field not in request.form:
+            continue
+        if d_str in closed_days:
             continue
         choice = request.form.get(field)
 
@@ -898,6 +977,8 @@ def admin_dashboard():
     for row in menu_rows:
         menu_by_date.setdefault(row["item_date"], []).append(row)
 
+    upcoming_closed_days = sorted(get_closed_days(db, today_str, "9999-12-31").items())
+
     # Plain-dict version of menu_by_date (date -> {category: dish name}) for
     # the single-day proxy order form's JS: as the admin changes the date,
     # the 区分 dropdown updates to show that day's actual dish name instead
@@ -1104,6 +1185,7 @@ def admin_dashboard():
     return render_template(
         "admin.html",
         menu_by_date=menu_by_date,
+        upcoming_closed_days=upcoming_closed_days,
         orders=orders,
         cancel_requests=cancel_requests,
         today_order_items=today_order_items,
@@ -1161,11 +1243,54 @@ def admin_add_menu():
         name = request.form.get(f"name_{code}", "").strip()
         if upsert_menu_item(db, item_date, code, name):
             added += 1
+    if added:
+        set_day_open(db, item_date)
     db.commit()
     if added:
         flash(f"{item_date} のメニューを登録しました。", "success")
     else:
         flash("メニュー名を1つ以上入力してください。", "error")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/menu/close-day", methods=["POST"])
+def admin_close_day():
+    """Mark one date as 定休日 (or reopen it) from the メニュー登録 tab. The PDF
+    import guesses this, but リリテイ's calendar isn't always readable, so the
+    admin needs a way to fix it after the fact."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    item_date = request.form.get("item_date", "")
+    try:
+        date.fromisoformat(item_date)
+    except ValueError:
+        flash("日付の形式が正しくありません。", "error")
+        return redirect(url_for("admin_dashboard"))
+
+    if request.form.get("action") == "open":
+        set_day_open(db, item_date)
+        db.commit()
+        flash(f"{item_date} を定休日ではなくしました。メニューを登録してください。", "success")
+        return redirect(url_for("admin_dashboard"))
+
+    # Existing orders for that date would be left stranded (the bento won't be
+    # delivered), so make the admin resolve them rather than silently hiding it.
+    live_orders = db.execute(
+        "SELECT COUNT(*) AS c FROM orders WHERE order_date = ? AND status = 'ordered'",
+        (item_date,),
+    ).fetchone()["c"]
+    if live_orders:
+        flash(
+            f"{item_date} には注文が{live_orders}件残っています。"
+            "先に「チケット回収」タブでキャンセルしてから定休日にしてください。",
+            "error",
+        )
+        return redirect(url_for("admin_dashboard"))
+
+    set_day_closed(db, item_date, request.form.get("reason", "").strip() or DEFAULT_CLOSED_REASON)
+    db.commit()
+    flash(f"{item_date} を定休日にしました。社員は注文できなくなります。", "success")
     return redirect(url_for("admin_dashboard"))
 
 
@@ -1196,10 +1321,17 @@ def admin_import_menu_pdf():
         flash("PDFから読み取れた日付はすべて過去の日付でした。", "error")
         return redirect(url_for("admin_dashboard"))
 
+    # Pre-tick the 定休日 box wherever the PDF wrote a closure marker into the
+    # menu cells, so the admin confirms a guess instead of spotting it unaided.
+    auto_closed = {
+        d: looks_like_closed_day(result[d].values()) for d in dates
+    }
+
     return render_template(
         "admin_import_review.html",
         dates=dates,
         parsed=result,
+        auto_closed=auto_closed,
         category_codes=CATEGORY_CODES,
         category_labels=CATEGORY_LABELS,
     )
@@ -1215,9 +1347,16 @@ def admin_import_menu_commit():
     db = get_db()
     dates = request.form.getlist("dates")
     saved_count = 0
+    closed_count = 0
     for d in dates:
         if not request.form.get(f"include_{d}"):
             continue
+        if request.form.get(f"closed_{d}"):
+            set_day_closed(db, d)
+            closed_count += 1
+            continue
+        # Re-registering a day that was previously closed reopens it.
+        set_day_open(db, d)
         any_added = False
         for code in CATEGORY_CODES:
             name = request.form.get(f"name_{d}_{code}", "").strip()
@@ -1226,8 +1365,13 @@ def admin_import_menu_commit():
         if any_added:
             saved_count += 1
     db.commit()
-    if saved_count:
-        flash(f"{saved_count}日分のメニューを登録しました。", "success")
+    if saved_count or closed_count:
+        parts = []
+        if saved_count:
+            parts.append(f"{saved_count}日分のメニュー")
+        if closed_count:
+            parts.append(f"{closed_count}日分の定休日")
+        flash("、".join(parts) + "を登録しました。", "success")
     else:
         flash("登録する日付が選択されていませんでした。", "error")
     return redirect(url_for("admin_dashboard"))

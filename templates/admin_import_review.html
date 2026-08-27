@@ -18,12 +18,22 @@
   <input type="hidden" name="dates" value="{{ d }}">
   <div class="card">
     <div class="date-header">
-      <h2>{{ d }}</h2>
-      <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:#555;">
-        <input type="checkbox" name="include_{{ d }}" checked style="width:auto;">
-        この日を登録する
-      </label>
+      <h2>{{ d }}({{ d|weekday_jp }})</h2>
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:#555;">
+          <input type="checkbox" name="include_{{ d }}" checked style="width:auto;">
+          この日を登録する
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:#555;">
+          <input type="checkbox" name="closed_{{ d }}" style="width:auto;"
+            {% if auto_closed[d] %}checked{% endif %}>
+          定休日(注文できない日)にする
+        </label>
+      </div>
     </div>
+    {% if auto_closed[d] %}
+    <p class="notice" style="margin-top:0;">PDFに「定休日」などの記載があったため、定休日として登録する設定にしています。違う場合はチェックを外してください。</p>
+    {% endif %}
     <div class="grid-form">
       {% for code in category_codes %}
       <label>{{ category_labels[code] }}

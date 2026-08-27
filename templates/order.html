@@ -43,7 +43,10 @@
     <div class="glance-cell {{ 'is-today' if day.is_today }}">
       <div class="glance-day">{{ day.weekday }}</div>
       <div class="glance-date">{{ day.mmdd }}</div>
-      {% if day.selected_code %}
+      {% if day.closed_reason %}
+        <div class="glance-dot closed-day" title="{{ day.closed_reason }}">休</div>
+        <div class="glance-cat">{{ day.closed_reason }}</div>
+      {% elif day.selected_code %}
         <div class="glance-dot {{ day.selected_code }}" title="{{ category_labels[day.selected_code] }}">◎</div>
         <div class="glance-cat">{{ category_labels[day.selected_code] }}</div>
       {% else %}
@@ -62,8 +65,11 @@
   <form method="post" action="{{ url_for('order_week') }}">
     <input type="hidden" name="week_monday" value="{{ week.monday }}">
     {% for day in week.days %}
-    <div class="day-row">
+    <div class="day-row{% if day.closed_reason %} is-closed-day{% endif %}">
       <div class="day-title">{{ day.date }}({{ day.weekday }})</div>
+      {% if day.closed_reason %}
+        <div class="muted">{{ day.closed_reason }}のため、この日はお弁当がありません。</div>
+      {% else %}
       <div class="day-choices">
         {% for code in category_codes %}
           {% if code in day.cats %}
@@ -82,15 +88,18 @@
           <span>注文しない</span>
         </label>
       </div>
+      {% endif %}
     </div>
     {% endfor %}
     <button type="submit" class="btn primary" style="margin-top: 12px;">この週の注文を確定・更新する</button>
   </form>
   {% else %}
     {% for day in week.days %}
-    <div class="day-row">
+    <div class="day-row{% if day.closed_reason %} is-closed-day{% endif %}">
       <div class="day-title">{{ day.date }}({{ day.weekday }})</div>
-      {% if day.selected_code %}
+      {% if day.closed_reason %}
+        <div class="muted">{{ day.closed_reason }}のため、この日はお弁当がありません。</div>
+      {% elif day.selected_code %}
         <div class="muted">選択中: {{ category_labels[day.selected_code] }}({{ day.cats[day.selected_code].name }})</div>
         {% if day.cancel_requested %}
         <p class="muted" style="margin-top:4px;">キャンセル希望を送信済みです(松浦さん・陽介さんの確認待ち)</p>
