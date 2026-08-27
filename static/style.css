@@ -9,6 +9,28 @@ body {
   background: #ffffff;
   border-bottom: 1px solid #e2e4e8;
 }
+/* 未対応のキャンセル希望を知らせる帯。画面上部に貼り付いて、
+   どこまでスクロールしても視界から外れないようにする。 */
+.attention-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #fff4e6;
+  border: 1px solid #ffa94d;
+  color: #8a4b08;
+  font-weight: 600;
+}
+.attention-bar[hidden] { display: none; }
+.attention-text { line-height: 1.5; }
+.row-overdue { background: #fff5f5; }
 .topbar-inner {
   max-width: 900px;
   margin: 0 auto;

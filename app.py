@@ -3,7 +3,7 @@ import sys
 import sqlite3
 from datetime import datetime, date, time, timedelta
 from zoneinfo import ZoneInfo
-from flask import Flask, g, request, session, redirect, url_for, render_template, flash
+from flask import Flask, g, request, session, redirect, url_for, render_template, flash, jsonify
 
 from menu_pdf_parser import parse_menu_pdf
 
@@ -272,6 +272,34 @@ def set_day_closed(db, item_date, reason=DEFAULT_CLOSED_REASON):
 
 def set_day_open(db, item_date):
     db.execute("DELETE FROM closed_days WHERE item_date = ?", (item_date,))
+
+
+# ---------- Admin attention (未対応の件数) ----------
+
+def pending_cancel_requests(db):
+    """Employee cancel requests still waiting on the admin, oldest first.
+
+    Deliberately not limited to today or the future: an unanswered request for
+    a date that has already passed is the worst case (the bento was delivered
+    and charged anyway), so it has to keep showing until someone acts on it.
+    """
+    rows = db.execute(
+        "SELECT o.*, m.category AS category, m.name AS dish_name "
+        "FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
+        "WHERE o.status = 'ordered' AND o.cancel_requested_at IS NOT NULL "
+        "ORDER BY o.cancel_requested_at"
+    ).fetchall()
+    today = today_jst()
+    out = []
+    for r in rows:
+        row = dict(r)
+        row["item_display"] = item_display_name(r["category"], r["dish_name"])
+        order_date = date.fromisoformat(r["order_date"])
+        # "その日を過ぎてしまった" requests are the ones that cost money.
+        row["is_overdue"] = order_date < today
+        row["is_today"] = order_date == today
+        out.append(row)
+    return out
 
 
 # ---------- Week / deadline helpers ----------
@@ -1003,8 +1031,7 @@ def admin_dashboard():
     # Employee-submitted "please cancel" requests, waiting for the admin to
     # approve — surfaced up top so they're seen regardless of which tab is
     # open or whether that date's group happens to be collapsed.
-    cancel_requests = [o for o in orders if o["cancel_requested_at"]]
-    cancel_requests.sort(key=lambda o: o["cancel_requested_at"])
+    cancel_requests = pending_cancel_requests(db)
 
     # Both 注文一覧 (per-person records) and 当日注文数確認 (per-dish
     # totals) share the same "today leads, future grouped by week, past
@@ -1251,6 +1278,27 @@ def admin_add_menu():
     else:
         flash("メニュー名を1つ以上入力してください。", "error")
     return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/pending")
+def admin_pending():
+    """Small JSON payload the open admin page polls, so a cancel request that
+    arrives while 松浦さん is looking at another tab still surfaces (browser
+    notification + tab title count) instead of waiting for a manual reload."""
+    if not admin_required():
+        return jsonify({"error": "unauthorized"}), 403
+    db = get_db()
+    pending = pending_cancel_requests(db)
+    return jsonify({
+        "count": len(pending),
+        "overdue": sum(1 for p in pending if p["is_overdue"]),
+        "today": sum(1 for p in pending if p["is_today"]),
+        "names": [f"{p['employee_name']}さん({p['order_date'][5:]})" for p in pending[:5]],
+        # The page compares this against its own clock to fire the 9:00
+        # reminder on JST, not on whatever timezone the viewer's PC is set to.
+        "now": now_jst().strftime("%H:%M"),
+        "same_day_cutoff": SAME_DAY_CANCEL_CUTOFF.strftime("%H:%M"),
+    })
 
 
 @app.route("/admin/menu/close-day", methods=["POST"])

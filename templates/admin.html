@@ -6,6 +6,20 @@
 {% endblock %}
 {% block content %}
 
+{# Sticky so an unanswered cancel request stays on screen no matter how far
+   down the admin scrolls or which tab they switch to. #}
+<div id="attention-bar" class="attention-bar" {% if not cancel_requests %}hidden{% endif %}>
+  <span class="attention-text">
+    未対応のキャンセル希望が <strong id="attention-count">{{ cancel_requests|length }}</strong> 件あります
+    <span id="attention-detail">
+      {%- set overdue = cancel_requests|selectattr('is_overdue')|list|length -%}
+      {%- set todays = cancel_requests|selectattr('is_today')|list|length -%}
+      {%- if overdue %}(うち{{ overdue }}件は日付が過ぎています){% elif todays %}(うち{{ todays }}件は本日分){% endif -%}
+    </span>
+  </span>
+  <a href="#cancel-requests" class="btn small primary">確認する</a>
+</div>
+
 <div class="card">
   <h1>{{ check_date }}({{ check_date_weekday }}){% if is_check_date_today %}(本日){% endif %}の注文 — 出欠チェック用</h1>
   <form method="get" action="{{ url_for('admin_dashboard') }}" class="inline-form" style="margin-bottom:10px;">
@@ -52,7 +66,7 @@
 </div>
 
 {% if cancel_requests %}
-<div class="card">
+<div class="card" id="cancel-requests">
   <h1>キャンセル希望が届いています({{ cancel_requests|length }}件)</h1>
   <p class="muted">締切後に社員本人がアプリから送ったキャンセル希望です。承認すると正式にキャンセルされます。週の紙のチェック表をすでに印刷済みの場合は、承認とあわせて紙の方も手書きで訂正してください。</p>
   <div class="table-scroll">
@@ -60,8 +74,11 @@
     <thead><tr><th>日付</th><th>氏名</th><th>区分</th><th>操作</th></tr></thead>
     <tbody>
       {% for o in cancel_requests %}
-      <tr>
-        <td data-label="日付">{{ o.order_date }}({{ o.order_date|weekday_jp }})</td>
+      <tr {% if o.is_overdue %}class="row-overdue"{% endif %}>
+        <td data-label="日付">{{ o.order_date }}({{ o.order_date|weekday_jp }})
+          {% if o.is_overdue %}<span class="badge closed">日付が過ぎています</span>
+          {% elif o.is_today %}<span class="badge closed">本日分</span>{% endif %}
+        </td>
         <td data-label="氏名">{{ o.employee_name }}</td>
         <td data-label="区分">{{ o.item_display }}</td>
         <td data-label="操作">
@@ -543,6 +560,17 @@
   </div>
 
   <div class="card">
+    <h1>キャンセル希望のお知らせ</h1>
+    <p class="muted">
+      この管理画面を開いている間、キャンセル希望が届くとパソコンの通知でお知らせします。
+      あわせて、当日キャンセルの締切時刻に未対応が残っていればもう一度お知らせします。
+      画面を閉じている間は通知されないので、朝いちばんにこの画面を開いておくのがおすすめです。
+    </p>
+    <button type="button" id="enable-notify" class="btn primary">デスクトップ通知を有効にする</button>
+    <p class="muted" style="margin-bottom:0;">ボタンを押すとブラウザが確認を出すので「許可」を選んでください。パソコンごと・ブラウザごとの設定です。</p>
+  </div>
+
+  <div class="card">
     <h1>生年月日の登録リセット</h1>
     <p class="muted">社員用の注文画面は、なりすまし防止のため初回ログイン時の生年月日(月日)を覚えて次回以降と照合しています。本人が生年月日を間違えて登録してしまいログインできなくなった場合、ここでリセットすると次回ログイン時に再登録できます。</p>
     {% if registered_employees %}
@@ -736,6 +764,108 @@
         alert('通信エラーが発生しました。もう一度お試しください。');
       });
     });
+  });
+})();
+</script>
+
+<script>
+/* 未対応のキャンセル希望に気づけるようにする。
+   外部の通知サービスは使わず、この画面を開いている間だけ動く仕組み:
+   - 1分ごとに件数を取得し、増えたらデスクトップ通知
+   - タブのタイトルに件数を出す(他のタブを見ていても目に入る)
+   - 当日キャンセル締切(9:00)にその日の未対応をまとめて通知 */
+(function () {
+  var POLL_MS = 60000;
+  var bar = document.getElementById('attention-bar');
+  var countEl = document.getElementById('attention-count');
+  var detailEl = document.getElementById('attention-detail');
+  var baseTitle = document.title;
+  var lastCount = parseInt(countEl ? countEl.textContent : '0', 10) || 0;
+  var notifiedCutoffOn = null;   // 9:00リマインドを送った日付(1日1回に抑える)
+
+  function canNotify() {
+    return ('Notification' in window) && Notification.permission === 'granted';
+  }
+
+  function notify(title, body) {
+    if (!canNotify()) return;
+    try {
+      new Notification(title, { body: body, tag: 'bento-cancel', renotify: true });
+    } catch (e) { /* 一部ブラウザでは通知が使えないが、他の表示で代替する */ }
+  }
+
+  function render(data) {
+    if (bar) {
+      bar.hidden = data.count === 0;
+      if (countEl) countEl.textContent = data.count;
+      if (detailEl) {
+        detailEl.textContent = data.overdue
+          ? '(うち' + data.overdue + '件は日付が過ぎています)'
+          : (data.today ? '(うち' + data.today + '件は本日分)' : '');
+      }
+    }
+    document.title = data.count ? '(' + data.count + ') ' + baseTitle : baseTitle;
+  }
+
+  function check() {
+    fetch('{{ url_for("admin_pending") }}', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        render(data);
+
+        if (data.count > lastCount) {
+          notify(
+            'キャンセル希望が届きました',
+            data.names.join('、') + ' — 未対応 ' + data.count + '件'
+          );
+        }
+        lastCount = data.count;
+
+        // 当日キャンセル締切をまたいだ最初のポーリングで、その日の未対応を通知。
+        // 締切時刻はサーバー側の設定に合わせ、日付が変わればまた通知する。
+        var todayKey = new Date().toDateString();
+        if (data.count > 0 && data.now >= data.same_day_cutoff && notifiedCutoffOn !== todayKey) {
+          notifiedCutoffOn = todayKey;
+          notify(
+            '未対応のキャンセル希望があります',
+            '本日' + data.same_day_cutoff + 'の締切時点で ' + data.count + '件が未対応です。'
+          );
+        }
+      })
+      .catch(function () { /* 一時的な通信断は次のポーリングで回復する */ });
+  }
+
+  // 通知の許可は、管理者が意識的に押したときだけ求める(いきなり出さない)
+  var askBtn = document.getElementById('enable-notify');
+  if (askBtn) {
+    if (!('Notification' in window)) {
+      askBtn.textContent = 'このブラウザは通知に対応していません';
+      askBtn.disabled = true;
+    } else if (Notification.permission === 'granted') {
+      askBtn.textContent = 'デスクトップ通知: 有効';
+      askBtn.disabled = true;
+    } else if (Notification.permission === 'denied') {
+      askBtn.textContent = '通知がブロックされています(ブラウザの設定から許可してください)';
+      askBtn.disabled = true;
+    } else {
+      askBtn.addEventListener('click', function () {
+        Notification.requestPermission().then(function (p) {
+          if (p === 'granted') {
+            askBtn.textContent = 'デスクトップ通知: 有効';
+            askBtn.disabled = true;
+            notify('通知を有効にしました', 'キャンセル希望が届くとここに表示されます。');
+          }
+        });
+      });
+    }
+  }
+
+  setInterval(check, POLL_MS);
+  render({
+    count: lastCount,
+    overdue: {{ cancel_requests|selectattr('is_overdue')|list|length }},
+    today: {{ cancel_requests|selectattr('is_today')|list|length }}
   });
 })();
 </script>
