@@ -567,7 +567,25 @@
       画面を閉じている間は通知されないので、朝いちばんにこの画面を開いておくのがおすすめです。
     </p>
     <button type="button" id="enable-notify" class="btn primary">デスクトップ通知を有効にする</button>
-    <p class="muted" style="margin-bottom:0;">ボタンを押すとブラウザが確認を出すので「許可」を選んでください。パソコンごと・ブラウザごとの設定です。</p>
+    <p class="muted">ボタンを押すとブラウザが確認を出すので「許可」を選んでください。パソコンごと・ブラウザごとの設定です。</p>
+
+    <h3>メールでのお知らせ</h3>
+    {% if mail_configured %}
+      <p class="muted">
+        <span class="badge open">設定済み</span>
+        キャンセル希望が届いたときと、当日キャンセル締切を過ぎても未対応が残っているときにメールを送ります。
+        管理画面を閉じていても届きます。
+      </p>
+      <form method="post" action="{{ url_for('admin_mail_test') }}" class="inline-form">
+        <button type="submit" class="btn">テストメールを送る</button>
+      </form>
+    {% else %}
+      <p class="muted">
+        <span class="badge closed">未設定</span>
+        メール送信の設定がされていないため、メールでのお知らせは行いません(画面上のお知らせのみ動作します)。
+        設定方法は開発担当(窪田)にご相談ください。
+      </p>
+    {% endif %}
   </div>
 
   <div class="card">

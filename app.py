@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from flask import Flask, g, request, session, redirect, url_for, render_template, flash, jsonify
 
 from menu_pdf_parser import parse_menu_pdf
+import notify
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Overridable so production deploys can point this at a persistent disk mount
@@ -180,6 +181,14 @@ def init_db():
         CREATE TABLE IF NOT EXISTS closed_days (
             item_date TEXT PRIMARY KEY,
             reason TEXT NOT NULL DEFAULT '定休日'
+        );
+
+        -- 1日1回だけ動かしたい処理(バックアップ・朝のまとめ通知)の実行記録。
+        -- PythonAnywhereの無料プランには定期実行がないため、cronの代わりに
+        -- 「その日まだ動いていなければアクセスのついでに動かす」方式を採る。
+        CREATE TABLE IF NOT EXISTS job_runs (
+            name TEXT PRIMARY KEY,
+            last_run_on TEXT NOT NULL
         );
         """
     )
@@ -875,6 +884,17 @@ def order_cancel_day():
         )
         db.commit()
         flash(f"{order_date} のキャンセル希望を送信しました。松浦さんか陽介さんが確認後、正式にキャンセルされます。", "success")
+
+        # 管理者にその場で知らせる。メール未設定や送信失敗でも社員側の操作は
+        # 成立させる(管理画面の警告バーと朝のまとめが受け皿になる)。
+        if notify.is_configured():
+            weekday = WEEKDAY_JP[date.fromisoformat(order_date).weekday()]
+            notify.send_mail(
+                f"[まつうランチ] {employee_name}さんからキャンセル希望({order_date})",
+                f"{employee_name}さんが {order_date}({weekday}) のキャンセルを希望しています。\n\n"
+                f"管理画面から承認/却下してください。\n"
+                f"{url_for('admin_dashboard', _external=True)}",
+            )
     return redirect(request.referrer or url_for("index"))
 
 
@@ -1213,6 +1233,7 @@ def admin_dashboard():
         "admin.html",
         menu_by_date=menu_by_date,
         upcoming_closed_days=upcoming_closed_days,
+        mail_configured=notify.is_configured(),
         orders=orders,
         cancel_requests=cancel_requests,
         today_order_items=today_order_items,
@@ -1280,6 +1301,97 @@ def admin_add_menu():
     return redirect(url_for("admin_dashboard"))
 
 
+def format_pending_mail(pending):
+    """朝のまとめ通知の本文。何をすればいいかが本文だけで分かるようにする。"""
+    lines = [f"未対応のキャンセル希望が {len(pending)}件 あります。", ""]
+    for p in pending:
+        mark = ""
+        if p["is_overdue"]:
+            mark = "【日付が過ぎています】"
+        elif p["is_today"]:
+            mark = "【本日分】"
+        lines.append(
+            f"・{p['order_date']}({WEEKDAY_JP[date.fromisoformat(p['order_date']).weekday()]}) "
+            f"{p['employee_name']}さん {p['item_display']} {mark}"
+        )
+    lines += [
+        "",
+        "管理画面の「キャンセル希望が届いています」から承認/却下してください。",
+        url_for("admin_dashboard", _external=True),
+    ]
+    return "\n".join(lines)
+
+
+def notify_pending_digest(db):
+    """その日の未対応をまとめてメールする。送ったら True。"""
+    pending = pending_cancel_requests(db)
+    if not pending:
+        return False
+    ok, _ = notify.send_mail(
+        f"[まつうランチ] 未対応のキャンセル希望が{len(pending)}件あります",
+        format_pending_mail(pending),
+    )
+    return ok
+
+
+def claim_job(db, name, today_str):
+    """今日ぶんの `name` を1プロセスだけが実行できるように予約する。
+
+    条件付きUPDATEなので、同時に来た複数のリクエストが二重に走ることはない
+    (更新できた1つだけが True を受け取る)。
+    """
+    cur = db.execute(
+        "INSERT INTO job_runs (name, last_run_on) VALUES (?, ?) "
+        "ON CONFLICT(name) DO UPDATE SET last_run_on = excluded.last_run_on "
+        "WHERE job_runs.last_run_on < excluded.last_run_on",
+        (name, today_str),
+    )
+    return cur.rowcount > 0
+
+
+# 直近でジョブ確認をした時刻。毎リクエストDBを触らないための足切り。
+_last_job_check = None
+JOB_CHECK_INTERVAL = timedelta(minutes=5)
+
+
+@app.before_request
+def run_due_daily_jobs():
+    """無料プランには定期実行がないので、アクセスのついでに日次処理を回す。
+
+    誰もアクセスしない日は動かないという弱点はあるが、キャンセル希望の
+    即時通知は送信操作そのものが契機なので、そちらは取りこぼさない。
+    """
+    global _last_job_check
+    if request.endpoint in (None, "static"):
+        return
+
+    now = now_jst()
+    if _last_job_check and now - _last_job_check < JOB_CHECK_INTERVAL:
+        return
+    _last_job_check = now
+
+    today_str = now.date().isoformat()
+    try:
+        db = get_db()
+        if claim_job(db, "backup", today_str):
+            db.commit()
+            try:
+                import backup_db
+                backup_db.main()
+            except Exception as e:
+                print(f"WARNING: 自動バックアップに失敗しました: {e}", file=sys.stderr)
+
+        # 朝のまとめは当日キャンセル締切を過ぎてから(それ以前は即時通知で足りる)
+        if now.time() >= SAME_DAY_CANCEL_CUTOFF and notify.is_configured():
+            if claim_job(db, "pending_digest", today_str):
+                db.commit()
+                notify_pending_digest(db)
+        db.commit()
+    except Exception as e:
+        # 日次処理の失敗で画面を落とさない
+        print(f"WARNING: 日次処理でエラーが発生しました: {e}", file=sys.stderr)
+
+
 @app.route("/admin/pending")
 def admin_pending():
     """Small JSON payload the open admin page polls, so a cancel request that
@@ -1299,6 +1411,24 @@ def admin_pending():
         "now": now_jst().strftime("%H:%M"),
         "same_day_cutoff": SAME_DAY_CANCEL_CUTOFF.strftime("%H:%M"),
     })
+
+
+@app.route("/admin/mail/test", methods=["POST"])
+def admin_mail_test():
+    """設定したメールが実際に届くか、管理画面から確かめられるようにする。
+    差出人の認証漏れや宛先の入力ミスは、実際に送ってみないと分からない。"""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    ok, reason = notify.send_mail(
+        "[まつうランチ] テスト送信",
+        "まつうランチの管理画面からのテスト送信です。\n"
+        "このメールが届いていれば、キャンセル希望のお知らせも同じ宛先に届きます。",
+    )
+    if ok:
+        flash("テストメールを送信しました。受信できているか確認してください。", "success")
+    else:
+        flash(reason, "error")
+    return redirect(url_for("admin_dashboard"))
 
 
 @app.route("/admin/menu/close-day", methods=["POST"])
