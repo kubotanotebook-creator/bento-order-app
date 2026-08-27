@@ -4,3 +4,6 @@ gunicorn>=23.0
 # Provides the IANA timezone database for zoneinfo (Asia/Tokyo). Required on
 # Windows and on slim Linux images that ship without the system tz database.
 tzdata>=2024.1
+# 音声→議事録ツール(/voice-notes)でのローカル文字起こしに使用。
+# この機能を使わないなら未インストールでもアプリ自体は起動する。
+faster-whisper>=1.0

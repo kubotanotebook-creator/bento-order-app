@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}議事録ツール ログイン{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>議事録ツール</h1>
+  <form method="post" action="{{ url_for('voice_notes_page') }}">
+    <label>アクセストークン</label>
+    <input type="password" name="token" required autofocus>
+    <button type="submit" class="btn primary">入る</button>
+  </form>
+</div>
+{% endblock %}

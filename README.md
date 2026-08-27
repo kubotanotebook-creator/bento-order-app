@@ -180,6 +180,7 @@ bento-app/
 ├── menu_pdf_parser.py   # リリテイの月間PDFを解析するモジュール
 ├── backup_db.py         # bento.db の定期バックアップ(圧縮・世代管理)
 ├── notify.py            # 管理者へのメール通知(Brevo API)
+├── voice_notes.py       # 音声→議事録→Notion自動投稿ツール(お弁当機能とは無関係)
 ├── requirements.txt     # 依存パッケージ
 ├── start_app.bat        # Windows用: ダブルクリックでサーバー起動+ブラウザを開く
 ├── templates/           # HTMLテンプレート
@@ -192,7 +193,9 @@ bento-app/
 │   ├── admin.html                 # 管理者用: 設定・メニュー登録・代理注文・注文一覧
 │   ├── admin_import_review.html  # PDF読み取り結果の確認・修正画面
 │   ├── admin_print_checklist.html # 受け取りチェック表(1日分)のA4印刷用ページ
-│   └── admin_print_checklist_week.html # 受け取りチェック表(週1枚)のA4印刷用ページ
+│   ├── admin_print_checklist_week.html # 受け取りチェック表(週1枚)のA4印刷用ページ
+│   ├── voice_notes_login.html    # 議事録ツールのトークン入力画面
+│   └── voice_notes.html          # 議事録ツール本体(アップロード・結果表示)
 └── static/
     └── style.css
 ```
@@ -200,6 +203,76 @@ bento-app/
 ## スマートフォン対応について
 
 全画面レスポンシブ対応済みです。社員用の注文画面はスマホでも見やすいカード形式で表示され、管理画面の一覧表も、画面幅が狭い場合は自動的にカード形式のレイアウトに切り替わり、ボタンが画面外に隠れることはありません。PCの広い画面では通常の表形式で表示されます。
+
+## 音声→議事録→Notion自動投稿ツール(`/voice-notes`)について
+
+お弁当注文とは無関係の、個人用の補助ツールです。音声ファイル(または文字起こし済みテキスト)を投げると、
+ローカルで文字起こし・要約して議事録形式に整形し、Notionに自動でページを作成します。外部APIの従量課金を
+避けるため、文字起こし・要約はどちらもローカルで完結します(Notionへの投稿だけがNotion公式APIを使います)。
+
+### 全体の流れ
+
+1. 音声を録音(Apple Watch → iPhoneのボイスメモなど、いつも通りでOK)
+2. `/voice-notes` の画面からアップロード、または iPhoneの「ショートカット」で共有シートから1タップ送信
+   (文字起こし済みテキストがあればそれを送るだけでよく、Whisperでの文字起こしはスキップされます)
+3. ローカルWhisper(`faster-whisper`)で文字起こし(音声ファイルを送った場合のみ)
+4. ローカルLLM(Ollama)で議事録形式(概要・要点・決定事項・TODO)に整形
+5. Notionの指定データベースに新規ページとして自動投稿
+
+### セットアップ
+
+**1. Ollama(ローカルLLM)をインストール**
+
+```bash
+# https://ollama.com からインストール後
+ollama pull llama3.1
+ollama serve   # 常駐させておく(既に動いていれば不要)
+```
+
+**2. faster-whisper をインストール**(requirements.txt に含まれています)
+
+```bash
+pip install faster-whisper
+```
+
+初回の文字起こし実行時にモデルが自動ダウンロードされます。
+
+**3. Notion Integration を作成**
+
+1. https://www.notion.so/my-integrations で「New integration」を作成し、シークレットトークン(`secret_...`)を控える
+2. 議事録を貯めたいNotionデータベースを開き、右上の「…」→「コネクト」から作成したIntegrationを追加(これをしないとAPIから書き込めません)
+3. データベースのタイトル列(タイプが「タイトル」になっている列)の名前を控える(既定では日本語UIだと「名前」)
+4. データベースのURLに含まれる32桁のIDを控える(`https://www.notion.so/xxxx?v=...` の `xxxx` 部分。ハイフンはあってもなくても可)
+
+**4. 環境変数を設定**
+
+| 変数 | 内容 |
+|---|---|
+| `VOICE_NOTES_TOKEN` | `/voice-notes` 画面・Webhookへのアクセストークン(必須。未設定だと機能ごと無効化されます) |
+| `NOTION_API_KEY` | Notion Integrationのシークレットトークン |
+| `NOTION_DATABASE_ID` | 議事録を追加するNotionデータベースのID |
+| `NOTION_TITLE_PROPERTY` | タイトル列のプロパティ名(既定「名前」) |
+| `OLLAMA_BASE_URL` | OllamaのURL(既定 `http://localhost:11434`) |
+| `OLLAMA_MODEL` | 使用するモデル名(既定 `llama3.1`) |
+| `WHISPER_MODEL_SIZE` | faster-whisperのモデルサイズ(既定 `small`。精度を上げたければ `medium` など) |
+
+### iPhoneの「ショートカット」で1タップ送信する設定(任意)
+
+ボイスメモアプリの自動文字起こし結果を、録音後の共有シートから1タップでこのツールに送れます。
+
+1. 「ショートカット」アプリで新規ショートカットを作成
+2. 「共有シートに表示」をオンにし、受け取る種類に「オーディオ」を指定
+3. アクション「URLの内容を取得」を追加し、以下を設定
+   - URL: `https://<デプロイ先のドメイン>/voice-notes/webhook`
+   - 方法: POST
+   - リクエスト本文: フォーム形式で `audio_file`(共有された音声=ショートカットの入力)と `token`(`VOICE_NOTES_TOKEN` の値)を設定
+4. ボイスメモの文字起こし結果のテキストだけを送りたい場合は、`audio_file` の代わりに `text` フィールドにその文字列を入れれば、Whisperでの文字起こしはスキップされます
+5. ボイスメモの再生・共有画面から、共有ボタン→作成したショートカットを選ぶだけで送信できます
+
+### 注意
+
+- この機能は認証がトークン1つだけの簡易なものです。社外に公開されたサーバーで動かす場合は、`VOICE_NOTES_TOKEN` を推測されにくい長い文字列にしてください。
+- 文字起こし・要約は音声の長さやサーバーのスペックによっては数分かかることがあります。処理中はリクエストが返ってこないので、非常に長い録音(1時間超など)では通信タイムアウトに注意してください。
 
 ## カスタマイズのヒント
 

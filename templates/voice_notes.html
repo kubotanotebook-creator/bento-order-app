@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}議事録ツール{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>音声 → 議事録 → Notion</h1>
+  <p>音声ファイルをアップロードするか、文字起こし済みのテキスト(ボイスメモの文字起こしをコピペなど)を貼り付けてください。
+     ローカルのWhisperで文字起こし(音声の場合)→ ローカルLLMで議事録に整形 → Notionへ自動投稿します。</p>
+  <p><a href="{{ url_for('voice_notes_logout') }}">ログアウト</a></p>
+
+  <form method="post" enctype="multipart/form-data">
+    <label>タイトル(空欄なら日時を自動設定)</label>
+    <input type="text" name="title" placeholder="例: 8/27 定例MTG">
+
+    <label>音声ファイル</label>
+    <input type="file" name="audio_file" accept="audio/*">
+
+    <label>または、文字起こし済みテキスト(あればこちらが優先されます)</label>
+    <textarea name="text" rows="8" placeholder="ボイスメモの文字起こし結果を貼り付け"></textarea>
+
+    <button type="submit" class="btn primary">議事録を作成してNotionへ送る</button>
+  </form>
+
+  {% if result %}
+    {% if result.ok %}
+      <div class="flash flash-success">
+        Notionに投稿しました: <a href="{{ result.notion_url }}" target="_blank" rel="noopener">{{ result.notion_url }}</a>
+      </div>
+      <h2>生成された議事録</h2>
+      <pre style="white-space: pre-wrap;">{{ result.minutes_text }}</pre>
+    {% else %}
+      <div class="flash flash-error">{{ result.error }}</div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

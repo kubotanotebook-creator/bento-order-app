@@ -1,12 +1,14 @@
 import os
 import sys
 import sqlite3
+import tempfile
 from datetime import datetime, date, time, timedelta
 from zoneinfo import ZoneInfo
 from flask import Flask, g, request, session, redirect, url_for, render_template, flash, jsonify
 
 from menu_pdf_parser import parse_menu_pdf
 import notify
+import voice_notes
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Overridable so production deploys can point this at a persistent disk mount
@@ -18,7 +20,9 @@ DEFAULT_SECRET_KEY = "dev-secret-change-me"
 DEFAULT_ADMIN_PASSWORD = "admin123"
 app.secret_key = os.environ.get("BENTO_SECRET_KEY", DEFAULT_SECRET_KEY)
 ADMIN_PASSWORD = os.environ.get("BENTO_ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD)
-app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20MB upload cap
+# 20MB was enough for menu PDFs alone, but voice-note uploads (meeting
+# recordings) can run much larger. Overridable via env for either direction.
+app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("BENTO_MAX_UPLOAD_MB", "150")) * 1024 * 1024
 
 # Fail-fast against shipping the built-in default secret key / admin password.
 # A known secret key lets anyone forge an "is_admin" session cookie, and the
@@ -2055,6 +2059,100 @@ def admin_print_checklist_week():
         category_short=CATEGORY_SHORT,
         category_print_short=CATEGORY_PRINT_SHORT,
     )
+
+
+# ---------- Voice notes (音声/文字起こし → 議事録 → Notion自動投稿) ----------
+# お弁当注文とは無関係の個人用ツール。VOICE_NOTES_TOKEN が未設定なら機能ごと無効。
+
+def voice_notes_required():
+    return session.get("voice_notes_ok", False)
+
+
+def _save_uploaded_audio(uploaded):
+    """アップロードされた音声ファイルを一時ファイルに保存し、そのパスを返す。"""
+    suffix = os.path.splitext(uploaded.filename)[1] or ".m4a"
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    uploaded.save(tmp_path)
+    return tmp_path
+
+
+@app.route("/voice-notes", methods=["GET", "POST"])
+def voice_notes_page():
+    if not voice_notes.is_enabled():
+        return "この機能は無効です(VOICE_NOTES_TOKEN が未設定)。", 404
+
+    if not voice_notes_required():
+        if request.method == "POST" and "audio_file" not in request.files:
+            if request.form.get("token", "") == voice_notes.voice_notes_token():
+                session["voice_notes_ok"] = True
+                return redirect(url_for("voice_notes_page"))
+            flash("トークンが違います。", "error")
+        return render_template("voice_notes_login.html")
+
+    result = None
+    if request.method == "POST":
+        title = request.form.get("title", "").strip() or f"議事録 {now_jst().strftime('%Y-%m-%d %H:%M')}"
+        raw_text = request.form.get("text", "").strip()
+        uploaded = request.files.get("audio_file")
+        tmp_path = None
+        try:
+            if not raw_text and uploaded and uploaded.filename:
+                tmp_path = _save_uploaded_audio(uploaded)
+            notion_url, minutes_text, _ = voice_notes.create_meeting_note(
+                title, audio_path=tmp_path, raw_text=raw_text or None
+            )
+            result = {"ok": True, "notion_url": notion_url, "minutes_text": minutes_text}
+        except voice_notes.VoiceNotesError as e:
+            result = {"ok": False, "error": str(e)}
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    return render_template("voice_notes.html", result=result)
+
+
+@app.route("/voice-notes/logout")
+def voice_notes_logout():
+    session.pop("voice_notes_ok", None)
+    return redirect(url_for("voice_notes_page"))
+
+
+@app.route("/voice-notes/webhook", methods=["POST"])
+def voice_notes_webhook():
+    """iOSショートカットなど外部からの1タップ送信用エンドポイント。
+
+    認証は `Authorization: Bearer <VOICE_NOTES_TOKEN>` ヘッダ、
+    またはフォーム/クエリの `token` パラメータのどちらでもよい。
+    `text`(文字起こし済み)か `audio_file`(音声ファイル)のどちらかを送る。
+    """
+    if not voice_notes.is_enabled():
+        return jsonify({"ok": False, "error": "この機能は無効です。"}), 404
+
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else (request.form.get("token") or request.args.get("token", ""))
+    if token != voice_notes.voice_notes_token():
+        return jsonify({"ok": False, "error": "認証エラー"}), 401
+
+    title = (request.form.get("title") or request.args.get("title") or "").strip()
+    if not title:
+        title = f"議事録 {now_jst().strftime('%Y-%m-%d %H:%M')}"
+    raw_text = (request.form.get("text") or "").strip()
+    uploaded = request.files.get("audio_file")
+
+    tmp_path = None
+    try:
+        if not raw_text and uploaded and uploaded.filename:
+            tmp_path = _save_uploaded_audio(uploaded)
+        notion_url, minutes_text, _ = voice_notes.create_meeting_note(
+            title, audio_path=tmp_path, raw_text=raw_text or None
+        )
+        return jsonify({"ok": True, "notion_url": notion_url, "minutes_text": minutes_text})
+    except voice_notes.VoiceNotesError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 # Runs on import too (not just `python app.py`), so gunicorn/WSGI deploys
