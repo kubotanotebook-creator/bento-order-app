@@ -80,6 +80,14 @@ WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
 # started, so further changes need to go through 松浦さん/陽介さん directly.
 SAME_DAY_CANCEL_CUTOFF = time(9, 0)
 
+# Links to the how-to manual/video, shown as a card on the employee dashboard
+# and in the admin nav. None hides that link — set here once the doc/video
+# exists rather than adding a settings-UI for something this rarely changes.
+EMPLOYEE_MANUAL_URL = "https://drive.google.com/file/d/1LzblC0b_AUxfNG2oaGQF90rcjO7ZUdCl/view?usp=drivesdk"
+EMPLOYEE_MANUAL_VIDEO_URL = None
+ADMIN_MANUAL_URL = None
+ADMIN_MANUAL_VIDEO_URL = None
+
 
 @app.template_filter("weekday_jp")
 def weekday_jp_filter(date_str):
@@ -600,6 +608,8 @@ def index():
         cycle_summary=cycle_summary,
         category_labels=CATEGORY_LABELS,
         today=today.isoformat(),
+        manual_url=EMPLOYEE_MANUAL_URL,
+        manual_video_url=EMPLOYEE_MANUAL_VIDEO_URL,
     )
 
 
@@ -1234,6 +1244,8 @@ def admin_dashboard():
         menu_by_date=menu_by_date,
         upcoming_closed_days=upcoming_closed_days,
         mail_configured=notify.is_configured(),
+        admin_manual_url=ADMIN_MANUAL_URL,
+        admin_manual_video_url=ADMIN_MANUAL_VIDEO_URL,
         orders=orders,
         cancel_requests=cancel_requests,
         today_order_items=today_order_items,

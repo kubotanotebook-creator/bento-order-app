@@ -114,6 +114,16 @@
   </div>
 </div>
 
+{% if manual_url or manual_video_url %}
+<div class="card">
+  <h1 style="margin-top:0;">使い方マニュアル</h1>
+  <div class="dashboard-links">
+    {% if manual_url %}<a class="btn dashboard-link" href="{{ manual_url }}" target="_blank" rel="noopener">📖 使い方ガイドを見る</a>{% endif %}
+    {% if manual_video_url %}<a class="btn dashboard-link" href="{{ manual_video_url }}" target="_blank" rel="noopener">🎬 使い方動画を見る</a>{% endif %}
+  </div>
+</div>
+{% endif %}
+
 <script>
 (function () {
   document.querySelectorAll('.date-toggle-btn').forEach(function (btn) {

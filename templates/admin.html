@@ -2,6 +2,8 @@
 {% block title %}管理画面{% endblock %}
 {% block nav %}
   <span class="who">管理者</span>
+  {% if admin_manual_url %}<a href="{{ admin_manual_url }}" target="_blank" rel="noopener">📖 マニュアル</a>{% endif %}
+  {% if admin_manual_video_url %}<a href="{{ admin_manual_video_url }}" target="_blank" rel="noopener">🎬 動画</a>{% endif %}
   <a href="{{ url_for('admin_logout') }}">ログアウト</a>
 {% endblock %}
 {% block content %}
