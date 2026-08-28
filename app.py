@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import sqlite3
 from datetime import datetime, date, time, timedelta
@@ -114,6 +115,7 @@ def close_db(exception=None):
 
 def init_db():
     db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row  # 移行処理が列名でアクセスするため
     db.executescript(
         """
         CREATE TABLE IF NOT EXISTS menu_items (
@@ -222,6 +224,8 @@ def init_db():
             file=sys.stderr,
         )
 
+    migrate_employee_name_spacing(db)
+
     # Employee-requested cancellations (for orders past that week's deadline)
     # don't cancel immediately — the admin approves them, since the weekly
     # paper checklist is already printed by then and only the admin can keep
@@ -233,6 +237,86 @@ def init_db():
         pass  # column already exists
 
     db.close()
+
+
+def migrate_employee_name_spacing(db):
+    """Merge people who registered under different spacing of the same name.
+
+    Runs at startup and is idempotent: once every stored name is canonical it
+    finds nothing to do. Without it, a person who first registered as
+    「山田　太郎」 (full-width space) and later as 「山田 太郎」 would keep two
+    separate sets of orders, tickets and payroll totals.
+    """
+    tables = ("orders", "ticket_issuances")
+
+    # Group every name we know about by its space-insensitive key.
+    names = {r["name"] for r in db.execute("SELECT name FROM employees")}
+    for t in tables:
+        names |= {r["employee_name"] for r in db.execute(f"SELECT DISTINCT employee_name FROM {t}")}
+
+    groups = {}
+    for n in names:
+        groups.setdefault(employee_name_key(n), []).append(n)
+
+    renames = {}
+    for key, variants in groups.items():
+        canonical = canonical_employee_name(sorted(variants)[0])
+        # Prefer a spelling that's already registered in `employees`, so the
+        # birthday check keeps working against the name we settle on.
+        for v in sorted(variants):
+            if v in {r["name"] for r in db.execute("SELECT name FROM employees")}:
+                canonical = canonical_employee_name(v)
+                break
+        for v in variants:
+            if v != canonical:
+                renames[v] = canonical
+
+    if not renames:
+        return
+
+    merged_orders = 0
+    for old, new in renames.items():
+        # Renaming could collide with the "one active order per person per day"
+        # index if both spellings ordered the same day. That's the same person
+        # double-booked, so keep one and cancel the other rather than failing.
+        clashes = db.execute(
+            "SELECT o.id FROM orders o WHERE o.employee_name = ? AND o.status = 'ordered' "
+            "AND EXISTS (SELECT 1 FROM orders p WHERE p.employee_name = ? "
+            "            AND p.order_date = o.order_date AND p.status = 'ordered')",
+            (old, new),
+        ).fetchall()
+        for row in clashes:
+            db.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (row["id"],))
+            merged_orders += 1
+
+        for t in tables:
+            db.execute(f"UPDATE {t} SET employee_name = ? WHERE employee_name = ?", (new, old))
+
+        # Carry the employees row (which holds the birthday used for login)
+        # over to the new spelling. Renaming would break the primary key if a
+        # row for the new spelling already exists, so in that case drop the
+        # duplicate instead — never delete without one of the two happening,
+        # or the person would have to register their birthday all over again.
+        if db.execute("SELECT 1 FROM employees WHERE name = ?", (old,)).fetchone():
+            if db.execute("SELECT 1 FROM employees WHERE name = ?", (new,)).fetchone():
+                db.execute("DELETE FROM employees WHERE name = ?", (old,))
+            else:
+                db.execute("UPDATE employees SET name = ? WHERE name = ?", (new, old))
+
+    # Names only ever seen in orders still need their own spacing tidied up.
+    for t in tables:
+        for row in db.execute(f"SELECT DISTINCT employee_name FROM {t}").fetchall():
+            c = canonical_employee_name(row["employee_name"])
+            if c != row["employee_name"]:
+                db.execute(f"UPDATE {t} SET employee_name = ? WHERE employee_name = ?",
+                           (c, row["employee_name"]))
+    db.commit()
+
+    print(
+        f"氏名の表記ゆれを統合しました: {len(renames)}件の表記を統一"
+        + (f"、重複注文{merged_orders}件をキャンセル扱いに変更" if merged_orders else ""),
+        file=sys.stderr,
+    )
 
 
 def get_settings():
@@ -488,12 +572,63 @@ def looks_like_full_name(name):
     return " " in name or "　" in name
 
 
+# ---------- Employee name normalization ----------
+
+# Phones tend to insert a full-width space between 姓 and 名 while PCs insert a
+# half-width one, so the same person would otherwise register twice and end up
+# with their orders, tickets and payroll split across two "people".
+_WHITESPACE_RE = re.compile(r"\s+")  # \s covers U+3000 (全角スペース) too
+
+
+def canonical_employee_name(raw):
+    """Display form: trimmed, whitespace runs collapsed to one half-width space."""
+    return _WHITESPACE_RE.sub(" ", (raw or "").strip())
+
+
+def employee_name_key(name):
+    """Identity form: all whitespace removed, so 「山田 太郎」「山田　太郎」
+    「山田太郎」 are one and the same person."""
+    return _WHITESPACE_RE.sub("", name or "")
+
+
+def find_employee(db, raw_name):
+    """Look up a registered employee ignoring how they spaced their name.
+    Returns the stored row (whose `name` is the spelling to keep using), or None.
+    The employees table is small enough that comparing in Python is simpler —
+    and more thorough — than trying to normalize inside SQL."""
+    key = employee_name_key(raw_name)
+    if not key:
+        return None
+    for row in db.execute("SELECT name, birthday FROM employees").fetchall():
+        if employee_name_key(row["name"]) == key:
+            return row
+    return None
+
+
+def resolve_employee_name(db, raw_name):
+    """The name to actually store for `raw_name`: an already-registered
+    person's own spelling if we can match them, otherwise the canonical form.
+    Keeps admin-entered proxy orders attached to the same person as their own
+    app orders, instead of creating a near-duplicate name."""
+    existing = find_employee(db, raw_name)
+    if existing:
+        return existing["name"]
+    canonical = canonical_employee_name(raw_name)
+    # The employees table only covers people who logged in themselves; someone
+    # who has only ever had proxy orders lives solely in `orders`.
+    key = employee_name_key(canonical)
+    for row in db.execute("SELECT DISTINCT employee_name FROM orders").fetchall():
+        if employee_name_key(row["employee_name"]) == key:
+            return row["employee_name"]
+    return canonical
+
+
 # ---------- Employee routes ----------
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
-        name = request.form.get("employee_name", "").strip()
+        name = canonical_employee_name(request.form.get("employee_name", ""))
         birthday_raw = request.form.get("birthday", "").strip()
 
         if not name:
@@ -508,12 +643,20 @@ def index():
             return redirect(url_for("index"))
 
         db = get_db()
-        existing = db.execute("SELECT birthday FROM employees WHERE name = ?", (name,)).fetchone()
+        # Matched ignoring spacing, so 「山田 太郎」 and 「山田　太郎」 are the
+        # same person; we then keep using the spelling already on record.
+        existing = find_employee(db, name)
         if existing:
             if existing["birthday"] != birthday:
                 flash("氏名と生年月日の組み合わせが一致しません。ご本人の生年月日を入力してください。", "error")
                 return redirect(url_for("index"))
+            name = existing["name"]
         else:
+            # First self-login. They may already exist in `orders` only —
+            # someone whose bento have so far been entered by the admin as
+            # proxy orders — so adopt that spelling, otherwise their existing
+            # orders and ticket history wouldn't follow them into the app.
+            name = resolve_employee_name(db, name)
             db.execute("INSERT INTO employees (name, birthday) VALUES (?, ?)", (name, birthday))
             db.commit()
 
@@ -1660,7 +1803,7 @@ def admin_proxy_add_order():
     db = get_db()
     settings = get_settings()
     order_date = request.form.get("order_date")
-    employee_name = request.form.get("employee_name", "").strip()
+    employee_name = resolve_employee_name(db, request.form.get("employee_name", ""))
     category = request.form.get("category")
 
     if not order_date or not employee_name or category not in CATEGORY_CODES:
@@ -1684,7 +1827,7 @@ def admin_proxy_add_week():
         return redirect(url_for("admin_login"))
     db = get_db()
     settings = get_settings()
-    employee_name = request.form.get("employee_name", "").strip()
+    employee_name = resolve_employee_name(db, request.form.get("employee_name", ""))
     monday_str = request.form.get("week_monday")
 
     if not employee_name or not monday_str:
