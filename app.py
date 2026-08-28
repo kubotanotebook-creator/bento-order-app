@@ -236,6 +236,17 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # column already exists
 
+    # Same idea for changing the 区分 after the deadline (フライあり→やさい).
+    # The FAX to リリテイ has already gone out by then, so the swap needs the
+    # admin to correct it — hence a request the admin approves, not a direct
+    # edit. change_requested_item_id holds the menu item they want instead.
+    for column in ("change_requested_at TEXT", "change_requested_item_id INTEGER"):
+        try:
+            db.execute(f"ALTER TABLE orders ADD COLUMN {column}")
+            db.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
     db.close()
 
 
@@ -378,23 +389,35 @@ def set_day_open(db, item_date):
 # ---------- Admin attention (未対応の件数) ----------
 
 def pending_cancel_requests(db):
-    """Employee cancel requests still waiting on the admin, oldest first.
+    """Employee requests still waiting on the admin (cancel or 区分変更),
+    oldest first.
 
     Deliberately not limited to today or the future: an unanswered request for
     a date that has already passed is the worst case (the bento was delivered
     and charged anyway), so it has to keep showing until someone acts on it.
     """
     rows = db.execute(
-        "SELECT o.*, m.category AS category, m.name AS dish_name "
-        "FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
-        "WHERE o.status = 'ordered' AND o.cancel_requested_at IS NOT NULL "
-        "ORDER BY o.cancel_requested_at"
+        "SELECT o.*, m.category AS category, m.name AS dish_name, "
+        "       w.category AS want_category, w.name AS want_dish_name "
+        "FROM orders o "
+        "JOIN menu_items m ON o.menu_item_id = m.id "
+        "LEFT JOIN menu_items w ON o.change_requested_item_id = w.id "
+        "WHERE o.status = 'ordered' "
+        "  AND (o.cancel_requested_at IS NOT NULL OR o.change_requested_at IS NOT NULL) "
+        "ORDER BY COALESCE(o.cancel_requested_at, o.change_requested_at)"
     ).fetchall()
     today = today_jst()
     out = []
     for r in rows:
         row = dict(r)
         row["item_display"] = item_display_name(r["category"], r["dish_name"])
+        # A cancel request wins if somehow both are set: cancelling makes the
+        # pending change moot, and it's the safer of the two to act on.
+        row["kind"] = "cancel" if r["cancel_requested_at"] else "change"
+        row["want_display"] = (
+            item_display_name(r["want_category"], r["want_dish_name"])
+            if r["want_category"] else None
+        )
         order_date = date.fromisoformat(r["order_date"])
         # "その日を過ぎてしまった" requests are the ones that cost money.
         row["is_overdue"] = order_date < today
@@ -795,6 +818,8 @@ def _week_glance(db, employee_name, monday):
         is_today = d == today
         is_past = d < today
         cancel_requested = bool(order and order["cancel_requested_at"])
+        change_requested = bool(order and order["change_requested_item_id"]
+                                and not cancel_requested)
         # Mirrors order_cancel_day()'s own rules: a past day can't be
         # cancelled (already happened), and today only counts down to the
         # 9:00 same-day cutoff — after that, changes go through the admin's
@@ -803,6 +828,7 @@ def _week_glance(db, employee_name, monday):
             selected_code is not None
             and not is_past
             and not cancel_requested
+            and not change_requested
             and (not is_today or now.time() < SAME_DAY_CANCEL_CUTOFF)
         )
         days.append({
@@ -816,6 +842,7 @@ def _week_glance(db, employee_name, monday):
             "is_past": is_past,
             "paid": bool(order["paid"]) if order else False,
             "cancel_requested": cancel_requested,
+            "change_requested": change_requested,
             "can_cancel": can_cancel,
         })
     return days
@@ -839,12 +866,21 @@ def _load_employee_menu_context(db, employee_name, today):
     ).fetchall()
     my_selection = {}  # order_date -> menu_item_id
     my_cancel_requested = set()  # order_dates with a pending cancel request
+    my_change_requested = {}  # order_date -> 変更を希望した先の表示名
     for o in my_orders:
         my_selection[o["order_date"]] = o["menu_item_id"]
         if o["cancel_requested_at"]:
             my_cancel_requested.add(o["order_date"])
+        elif o["change_requested_item_id"]:
+            want = db.execute(
+                "SELECT category, name FROM menu_items WHERE id = ?",
+                (o["change_requested_item_id"],),
+            ).fetchone()
+            if want:
+                my_change_requested[o["order_date"]] = item_display_name(
+                    want["category"], want["name"])
 
-    return menu_by_date, my_selection, my_cancel_requested
+    return menu_by_date, my_selection, my_cancel_requested, my_change_requested
 
 
 @app.route("/order")
@@ -856,7 +892,8 @@ def order_page():
     db = get_db()
     settings = get_settings()
     today = today_jst()
-    menu_by_date, my_selection, my_cancel_requested = _load_employee_menu_context(db, employee_name, today)
+    menu_by_date, my_selection, my_cancel_requested, my_change_requested = \
+        _load_employee_menu_context(db, employee_name, today)
 
     # Closed days still get a row on the ordering page (greyed out, no choices)
     # rather than being dropped: a silently missing weekday reads as "did I
@@ -889,6 +926,8 @@ def order_page():
                 "closed_reason": closed_days.get(d_str),
                 "selected_code": selected_code,
                 "cancel_requested": d_str in my_cancel_requested,
+                "change_requested": d_str in my_change_requested,
+                "change_want_display": my_change_requested.get(d_str),
                 "is_past": d < today,
                 "is_today": d == today,
             })
@@ -1048,6 +1087,68 @@ def order_cancel_day():
                 f"管理画面から承認/却下してください。\n"
                 f"{url_for('admin_dashboard', _external=True)}",
             )
+    return redirect(request.referrer or url_for("index"))
+
+
+@app.route("/order/change-day", methods=["POST"])
+def order_change_day():
+    """Ask to swap the 区分 of an already-placed order after that week's
+    deadline. Like a cancellation this only records a request: the FAX to
+    リリテイ has gone out with per-dish counts, so the admin has to correct it
+    (and the printed checklist) before the swap is real."""
+    employee_name = session.get("employee_name")
+    if not employee_name:
+        return redirect(url_for("index"))
+
+    order_date = request.form.get("order_date", "")
+    category = request.form.get("category", "")
+    today_str = today_jst().isoformat()
+    # Same window as cancelling: a past day is already delivered, and by 9:00
+    # on the day itself the admin's morning process has started.
+    if order_date < today_str:
+        return redirect(request.referrer or url_for("index"))
+    if order_date == today_str and now_jst().time() >= SAME_DAY_CANCEL_CUTOFF:
+        flash("本日分の変更希望は9:00までです。それ以降は松浦さんか陽介さんに直接お伝えください。", "error")
+        return redirect(request.referrer or url_for("index"))
+    if category not in CATEGORY_CODES:
+        return redirect(request.referrer or url_for("index"))
+
+    db = get_db()
+    existing = db.execute(
+        "SELECT * FROM orders WHERE employee_name = ? AND order_date = ? AND status = 'ordered'",
+        (employee_name, order_date),
+    ).fetchone()
+    if not existing:
+        return redirect(request.referrer or url_for("index"))
+
+    wanted = db.execute(
+        "SELECT * FROM menu_items WHERE item_date = ? AND category = ?", (order_date, category)
+    ).fetchone()
+    if not wanted:
+        flash("その区分はこの日に登録されていません。", "error")
+        return redirect(request.referrer or url_for("index"))
+    if wanted["id"] == existing["menu_item_id"]:
+        flash("すでにその区分で注文しています。", "error")
+        return redirect(request.referrer or url_for("index"))
+
+    db.execute(
+        "UPDATE orders SET change_requested_at = ?, change_requested_item_id = ? WHERE id = ?",
+        (now_jst().isoformat(), wanted["id"], existing["id"]),
+    )
+    db.commit()
+    want_display = item_display_name(wanted["category"], wanted["name"])
+    flash(f"{order_date} を「{want_display}」に変更する希望を送信しました。"
+          "松浦さんか陽介さんが確認後、正式に変更されます。", "success")
+
+    if notify.is_configured():
+        weekday = WEEKDAY_JP[date.fromisoformat(order_date).weekday()]
+        notify.send_mail(
+            f"[まつうランチ] {employee_name}さんから変更希望({order_date})",
+            f"{employee_name}さんが {order_date}({weekday}) の区分を\n"
+            f"「{want_display}」に変更したいと希望しています。\n\n"
+            f"管理画面から承認/却下してください。\n"
+            f"{url_for('admin_dashboard', _external=True)}",
+        )
     return redirect(request.referrer or url_for("index"))
 
 
@@ -1458,7 +1559,7 @@ def admin_add_menu():
 
 def format_pending_mail(pending):
     """朝のまとめ通知の本文。何をすればいいかが本文だけで分かるようにする。"""
-    lines = [f"未対応のキャンセル希望が {len(pending)}件 あります。", ""]
+    lines = [f"未対応の希望(キャンセル・区分変更)が {len(pending)}件 あります。", ""]
     for p in pending:
         mark = ""
         if p["is_overdue"]:
@@ -1483,7 +1584,7 @@ def notify_pending_digest(db):
     if not pending:
         return False
     ok, _ = notify.send_mail(
-        f"[まつうランチ] 未対応のキャンセル希望が{len(pending)}件あります",
+        f"[まつうランチ] 未対応の希望が{len(pending)}件あります",
         format_pending_mail(pending),
     )
     return ok
@@ -1951,6 +2052,57 @@ def admin_reject_cancel_request():
     )
     db.commit()
     flash("キャンセル希望を却下しました(注文はそのまま残っています)。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/orders/approve-change", methods=["POST"])
+def admin_approve_change_request():
+    """Apply an employee's 区分変更 request. Separate from the request itself
+    so the admin corrects the FAX and the printed checklist at the same time."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    order_id = request.form.get("order_id")
+    order = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    if not order or not order["change_requested_item_id"]:
+        flash("対象の変更希望が見つかりません。", "error")
+        return redirect(url_for("admin_dashboard"))
+
+    wanted = db.execute(
+        "SELECT * FROM menu_items WHERE id = ?", (order["change_requested_item_id"],)
+    ).fetchone()
+    if not wanted:
+        flash("変更先のメニューが見つかりません(削除された可能性があります)。", "error")
+        return redirect(url_for("admin_dashboard"))
+
+    db.execute(
+        "UPDATE orders SET menu_item_id = ?, change_requested_at = NULL, "
+        "change_requested_item_id = NULL WHERE id = ?",
+        (wanted["id"], order_id),
+    )
+    db.commit()
+    flash(
+        f"{order['employee_name']} さんの{order['order_date']}の注文を"
+        f"「{item_display_name(wanted['category'], wanted['name'])}」に変更しました。"
+        "りりてーへの連絡内容と紙のチェック表もあわせて修正してください。",
+        "warning",
+    )
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/orders/reject-change", methods=["POST"])
+def admin_reject_change_request():
+    """Dismiss a 区分変更 request, leaving the original order as it is."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute(
+        "UPDATE orders SET change_requested_at = NULL, change_requested_item_id = NULL "
+        "WHERE id = ?",
+        (request.form.get("order_id"),),
+    )
+    db.commit()
+    flash("変更希望を却下しました(注文はそのまま残っています)。", "success")
     return redirect(url_for("admin_dashboard"))
 
 

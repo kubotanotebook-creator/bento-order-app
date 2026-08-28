@@ -12,7 +12,7 @@
    down the admin scrolls or which tab they switch to. #}
 <div id="attention-bar" class="attention-bar" {% if not cancel_requests %}hidden{% endif %}>
   <span class="attention-text">
-    未対応のキャンセル希望が <strong id="attention-count">{{ cancel_requests|length }}</strong> 件あります
+    未対応の希望(キャンセル・区分変更)が <strong id="attention-count">{{ cancel_requests|length }}</strong> 件あります
     <span id="attention-detail">
       {%- set overdue = cancel_requests|selectattr('is_overdue')|list|length -%}
       {%- set todays = cancel_requests|selectattr('is_today')|list|length -%}
@@ -69,11 +69,11 @@
 
 {% if cancel_requests %}
 <div class="card" id="cancel-requests">
-  <h1>キャンセル希望が届いています({{ cancel_requests|length }}件)</h1>
-  <p class="muted">締切後に社員本人がアプリから送ったキャンセル希望です。承認すると正式にキャンセルされます。週の紙のチェック表をすでに印刷済みの場合は、承認とあわせて紙の方も手書きで訂正してください。</p>
+  <h1>社員からの希望が届いています({{ cancel_requests|length }}件)</h1>
+  <p class="muted">締切後に社員本人がアプリから送った、キャンセル・区分変更の希望です。承認すると正式に反映されます。週の紙のチェック表をすでに印刷済みの場合は、承認とあわせて紙の方も手書きで訂正してください。区分変更を承認したときは、りりてーへ伝えた食数の訂正も必要です。</p>
   <div class="table-scroll">
   <table class="table">
-    <thead><tr><th>日付</th><th>氏名</th><th>区分</th><th>操作</th></tr></thead>
+    <thead><tr><th>日付</th><th>氏名</th><th>内容</th><th>操作</th></tr></thead>
     <tbody>
       {% for o in cancel_requests %}
       <tr {% if o.is_overdue %}class="row-overdue"{% endif %}>
@@ -82,8 +82,26 @@
           {% elif o.is_today %}<span class="badge closed">本日分</span>{% endif %}
         </td>
         <td data-label="氏名">{{ o.employee_name }}</td>
-        <td data-label="区分">{{ o.item_display }}</td>
+        <td data-label="内容">
+          {% if o.kind == 'change' %}
+            <span class="badge closed">区分変更</span>
+            {{ o.item_display }} → <strong>{{ o.want_display }}</strong>
+          {% else %}
+            <span class="badge closed">キャンセル</span>
+            {{ o.item_display }}
+          {% endif %}
+        </td>
         <td data-label="操作">
+          {% if o.kind == 'change' %}
+          <form method="post" action="{{ url_for('admin_approve_change_request') }}" class="inline-form" style="margin:0;" onsubmit="return confirm('{{ o.employee_name }}さんの{{ o.order_date }}の注文を「{{ o.want_display }}」に変更します。\nりりてーへ伝えた食数と紙のチェック表もあわせて修正してください。\nよろしいですか?');">
+            <input type="hidden" name="order_id" value="{{ o.id }}">
+            <button type="submit" class="btn small primary">承認して変更</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_reject_change_request') }}" class="inline-form" style="margin:0;" onsubmit="return confirm('{{ o.employee_name }}さんの変更希望を却下しますか?(注文はそのまま残ります)');">
+            <input type="hidden" name="order_id" value="{{ o.id }}">
+            <button type="submit" class="btn small">却下</button>
+          </form>
+          {% else %}
           <form method="post" action="{{ url_for('admin_approve_cancel_request') }}" class="inline-form" style="margin:0;" onsubmit="return confirm('{{ o.employee_name }}さんの{{ o.order_date }}の注文をキャンセルします。\n紙のチェック表もあわせて修正してください。\nよろしいですか?');">
             <input type="hidden" name="order_id" value="{{ o.id }}">
             <button type="submit" class="btn small primary">承認してキャンセル</button>
@@ -92,6 +110,7 @@
             <input type="hidden" name="order_id" value="{{ o.id }}">
             <button type="submit" class="btn small">却下</button>
           </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -848,7 +867,7 @@
         if (data.count > 0 && data.now >= data.same_day_cutoff && notifiedCutoffOn !== todayKey) {
           notifiedCutoffOn = todayKey;
           notify(
-            '未対応のキャンセル希望があります',
+            '未対応の希望があります',
             '本日' + data.same_day_cutoff + 'の締切時点で ' + data.count + '件が未対応です。'
           );
         }

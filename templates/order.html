@@ -103,11 +103,25 @@
         <div class="muted">選択中: {{ category_labels[day.selected_code] }}({{ day.cats[day.selected_code].name }})</div>
         {% if day.cancel_requested %}
         <p class="muted" style="margin-top:4px;">キャンセル希望を送信済みです(松浦さん・陽介さんの確認待ち)</p>
+        {% elif day.change_requested %}
+        <p class="muted" style="margin-top:4px;">「{{ day.change_want_display }}」への変更希望を送信済みです(松浦さん・陽介さんの確認待ち)</p>
         {% elif not day.is_today and not day.is_past %}
         <form method="post" action="{{ url_for('order_cancel_day') }}" class="inline-form" style="margin-top:4px;" onsubmit="return confirm('{{ day.date }}のキャンセルを希望しますか?松浦さんか陽介さんが確認後、正式にキャンセルされます。');">
           <input type="hidden" name="order_date" value="{{ day.date }}">
           <button type="submit" class="btn small">この日のキャンセルを希望する</button>
         </form>
+        {% set others = category_codes | select('in', day.cats) | reject('equalto', day.selected_code) | list %}
+        {% if others %}
+        <form method="post" action="{{ url_for('order_change_day') }}" class="inline-form" style="margin-top:4px;">
+          <input type="hidden" name="order_date" value="{{ day.date }}">
+          <select name="category" style="width:auto; margin-bottom:0;">
+            {% for code in others %}
+            <option value="{{ code }}">{{ category_labels[code] }}: {{ day.cats[code].name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn small">この区分への変更を希望する</button>
+        </form>
+        {% endif %}
         {% endif %}
       {% else %}
         <div class="muted">注文なし</div>
