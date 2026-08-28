@@ -206,12 +206,14 @@
     {% if ticket_issuances %}
     <div class="table-scroll" style="margin-top:12px;">
     <table class="table">
-      <thead><tr><th>氏名</th><th>渡した日</th><th>枚数</th><th>操作</th></tr></thead>
+      <thead><tr><th>氏名</th><th>日付</th><th>枚数</th><th>操作</th></tr></thead>
       <tbody>
         {% for t in ticket_issuances %}
         <tr>
           <td data-label="氏名">{{ t.employee_name }}</td>
-          <td data-label="渡した日">{{ t.issued_at }}</td>
+          <td data-label="日付">{{ t.issued_at }}
+            {% if t.kind == 'opening' %}<span class="badge closed">開始時の残枚数</span>{% endif %}
+          </td>
           <td data-label="枚数">{{ t.quantity }}枚</td>
           <td data-label="操作">
             <form method="post" action="{{ url_for('admin_delete_ticket_issuance') }}" onsubmit="return confirm('この記録を削除しますか?');">
@@ -227,6 +229,30 @@
     {% else %}
     <p class="muted">まだ記録がありません。</p>
     {% endif %}
+  </div>
+
+  <div class="card">
+    <h1>運用開始時の残枚数を登録(最初に1回だけ)</h1>
+    <p class="muted">
+      アプリを使い始める時点で、すでに配ってあるチケットの<strong>残り枚数</strong>をここで登録します。
+      アプリは「最後に渡した枚数 − アプリに入っている注文数」で残りを計算するため、
+      これを入れておかないと、使いかけの冊が満タン(10枚)として表示されてしまいます。
+    </p>
+    <p class="muted">
+      <strong>この登録は天引きの対象になりません。</strong>すでに紙の運用で精算済みのぶんだからです。
+      8月16日以降に新しく渡した冊は、上の「10枚渡した記録」に実際の日付で登録してください(そちらは天引きに反映されます)。
+    </p>
+    <form method="post" action="{{ url_for('admin_set_opening_tickets') }}" class="grid-form">
+      <label>氏名
+        <input type="text" name="employee_name" list="employee-list" placeholder="例: 山田 太郎" required>
+      </label>
+      <label>基準日<input type="date" name="issued_at" value="{{ today }}" required></label>
+      <label>この日時点の残り枚数
+        <input type="number" name="remaining" min="0" max="10" step="1" placeholder="例: 4" required>
+      </label>
+      <button type="submit" class="btn primary">残り枚数を登録</button>
+    </form>
+    <p class="muted" style="margin-bottom:0;">まだアプリを使ったことがない人の分も、氏名を直接入力して登録できます。</p>
   </div>
 
   <div class="card">

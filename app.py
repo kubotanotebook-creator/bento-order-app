@@ -236,6 +236,17 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # column already exists
 
+    # At go-live everyone is already holding a part-used booklet, but the app
+    # has no record of the bento they bought with it, so a plain 10枚 handout
+    # row would show as untouched. An 'opening' row instead records "this many
+    # tickets left, as of this date" — it sets 残り枚数 like any handout, but is
+    # excluded from the payroll deduction, since that money was taken already.
+    try:
+        db.execute("ALTER TABLE ticket_issuances ADD COLUMN kind TEXT NOT NULL DEFAULT 'issue'")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
     # Same idea for changing the 区分 after the deadline (フライあり→やさい).
     # The FAX to リリテイ has already gone out by then, so the swap needs the
     # admin to correct it — hence a request the admin approves, not a direct
@@ -638,11 +649,13 @@ def resolve_employee_name(db, raw_name):
         return existing["name"]
     canonical = canonical_employee_name(raw_name)
     # The employees table only covers people who logged in themselves; someone
-    # who has only ever had proxy orders lives solely in `orders`.
+    # who has only ever had proxy orders — or whose opening ticket balance was
+    # entered before they first used the app — lives solely in these tables.
     key = employee_name_key(canonical)
-    for row in db.execute("SELECT DISTINCT employee_name FROM orders").fetchall():
-        if employee_name_key(row["employee_name"]) == key:
-            return row["employee_name"]
+    for table in ("orders", "ticket_issuances"):
+        for row in db.execute(f"SELECT DISTINCT employee_name FROM {table}").fetchall():
+            if employee_name_key(row["employee_name"]) == key:
+                return row["employee_name"]
     return canonical
 
 
@@ -736,9 +749,10 @@ def index():
     # has been logged yet for this cycle.
     price_per_booklet = settings["price"] * 10
     cycle_start, cycle_end = payroll_cycle(today)
+    # kind='opening' は運用開始時の棚卸しなので、天引きには含めない。
     cycle_booklets = db.execute(
         "SELECT COUNT(*) as c FROM ticket_issuances WHERE employee_name = ? "
-        "AND issued_at >= ? AND issued_at <= ?",
+        "AND issued_at >= ? AND issued_at <= ? AND kind = 'issue'",
         (employee_name, cycle_start.isoformat(), cycle_end.isoformat()),
     ).fetchone()["c"]
     cycle_order_count = db.execute(
@@ -750,7 +764,7 @@ def index():
         r["issued_at"]
         for r in db.execute(
             "SELECT issued_at FROM ticket_issuances WHERE employee_name = ? "
-            "AND issued_at >= ? AND issued_at <= ? ORDER BY issued_at",
+            "AND issued_at >= ? AND issued_at <= ? AND kind = 'issue' ORDER BY issued_at",
             (employee_name, cycle_start.isoformat(), cycle_end.isoformat()),
         ).fetchall()
     ]
@@ -1380,7 +1394,9 @@ def admin_dashboard():
     # down per employee so whoever processes payroll can read each person's
     # deduction straight off this screen instead of counting rows by hand.
     price_per_booklet = settings["price"] * 10
-    all_issuances = db.execute("SELECT * FROM ticket_issuances ORDER BY issued_at").fetchall()
+    # 運用開始時の残枚数(kind='opening')は既に精算済みのぶんなので集計しない。
+    all_issuances = db.execute(
+        "SELECT * FROM ticket_issuances WHERE kind = 'issue' ORDER BY issued_at").fetchall()
     payroll_cycles_by_key = {}
     for row in all_issuances:
         start, end = payroll_cycle(date.fromisoformat(row["issued_at"]))
@@ -1994,6 +2010,49 @@ def admin_issue_tickets():
     )
     db.commit()
     flash(f"{name} さんに{issued_at}付でチケット10枚を渡した記録を保存しました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/tickets/opening", methods=["POST"])
+def admin_set_opening_tickets():
+    """Record how many tickets someone already holds when the app starts being
+    used. 残り枚数 is derived from the last handout minus the orders logged
+    since, so a part-used booklet from before go-live would otherwise show as
+    a full one — the bento bought with it were never entered here. Recorded as
+    kind='opening' so it sets the count without being charged again: that
+    booklet was already deducted from their pay under the paper process."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    name = resolve_employee_name(db, request.form.get("employee_name", ""))
+    as_of = request.form.get("issued_at", "").strip()
+    remaining_raw = request.form.get("remaining", "").strip()
+
+    if not name or not as_of:
+        flash("氏名と基準日を入力してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        date.fromisoformat(as_of)
+    except ValueError:
+        flash("日付の形式が正しくありません。", "error")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        remaining = int(remaining_raw)
+    except ValueError:
+        flash("残り枚数を数字で入力してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+    if not 0 <= remaining <= 10:
+        flash("残り枚数は0〜10の範囲で入力してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+
+    db.execute(
+        "INSERT INTO ticket_issuances (employee_name, issued_at, quantity, kind, created_at) "
+        "VALUES (?, ?, ?, 'opening', ?)",
+        (name, as_of, remaining, now_jst().isoformat()),
+    )
+    db.commit()
+    flash(f"{name} さんの{as_of}時点の残り枚数を{remaining}枚として登録しました"
+          "(この登録は天引きの対象になりません)。", "success")
     return redirect(url_for("admin_dashboard"))
 
 
