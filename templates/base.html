@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}まつうランチ{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#d9480f">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
 </head>
 <body>
 <header class="topbar">
@@ -81,6 +84,15 @@
     if (e.target === modal) close();
   });
 })();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  // Registered on every page (not just the dashboard) since both "add to
+  // home screen" installability and push notifications depend on a service
+  // worker being active regardless of which page the user is currently on.
+  navigator.serviceWorker.register('/sw.js').catch(function () {});
+}
 </script>
 </body>
 </html>

@@ -1,10 +1,15 @@
+import io
+import json
 import os
 import re
 import sys
 import sqlite3
 from datetime import datetime, date, time, timedelta
 from zoneinfo import ZoneInfo
-from flask import Flask, g, request, session, redirect, url_for, render_template, flash, jsonify
+from flask import Flask, g, request, session, redirect, url_for, render_template, flash, jsonify, send_file
+
+import qrcode
+from pywebpush import webpush, WebPushException
 
 from menu_pdf_parser import parse_menu_pdf
 import notify
@@ -20,6 +25,16 @@ DEFAULT_ADMIN_PASSWORD = "admin123"
 app.secret_key = os.environ.get("BENTO_SECRET_KEY", DEFAULT_SECRET_KEY)
 ADMIN_PASSWORD = os.environ.get("BENTO_ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD)
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20MB upload cap
+
+# Web Push (browser notifications for employees). The default pair below is
+# a real, working VAPID key — fine for local/dev use, but production should
+# override it via env vars the same way BENTO_SECRET_KEY does, since anyone
+# with the private key could send push messages impersonating this app.
+DEFAULT_VAPID_PUBLIC_KEY = "BDDBO72EuvpMsKQXr-b_RXYj2kpfIK5UpdYNzYw88dc45fcpYjfYYrH5iICX5ddjz80DycGg6R6L9Nhtml0ZOeU"
+DEFAULT_VAPID_PRIVATE_KEY = "BaYFAlOLaoPc7Qv7-jCVD8IU3uLZKU6Bwd1LjjMVm64"
+VAPID_PUBLIC_KEY = os.environ.get("BENTO_VAPID_PUBLIC_KEY", DEFAULT_VAPID_PUBLIC_KEY)
+VAPID_PRIVATE_KEY = os.environ.get("BENTO_VAPID_PRIVATE_KEY", DEFAULT_VAPID_PRIVATE_KEY)
+VAPID_SUBJECT = os.environ.get("BENTO_VAPID_SUBJECT", "mailto:admin@example.com")
 
 # Fail-fast against shipping the built-in default secret key / admin password.
 # A known secret key lets anyone forge an "is_admin" session cookie, and the
@@ -281,6 +296,19 @@ def init_db():
             order_date TEXT NOT NULL,
             old_category TEXT,
             new_category TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        -- One row per browser/device an employee has enabled push notifications
+        -- on (a person could have this on their phone and their PC). endpoint
+        -- is unique to the browser subscription itself, so it doubles as the
+        -- natural key for upserts.
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_name TEXT NOT NULL,
+            endpoint TEXT NOT NULL UNIQUE,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
         """
@@ -928,6 +956,7 @@ def index():
         manual_video_url=EMPLOYEE_MANUAL_VIDEO_URL,
         show_tour=show_tour,
         resolution_notices=resolution_notices,
+        vapid_public_key=VAPID_PUBLIC_KEY,
     )
 
 
@@ -1237,6 +1266,90 @@ def tour_seen():
         )
         db.commit()
     return ("", 204)
+
+
+@app.route("/push/subscribe", methods=["POST"])
+def push_subscribe():
+    """Save a browser's Web Push subscription for the logged-in employee.
+    Called from the dashboard's "通知を有効にする" button once the browser
+    grants permission — one row per browser/device, upserted on endpoint
+    since re-subscribing (e.g. after clearing site data) reuses the same
+    call from the same underlying push service in practice, but a changed
+    endpoint just becomes a new row rather than an error."""
+    employee_name = session.get("employee_name")
+    if not employee_name:
+        return jsonify({"error": "unauthorized"}), 403
+    data = request.get_json(silent=True) or {}
+    endpoint = data.get("endpoint")
+    keys = data.get("keys") or {}
+    p256dh, auth = keys.get("p256dh"), keys.get("auth")
+    if not (endpoint and p256dh and auth):
+        return jsonify({"error": "invalid subscription"}), 400
+    db = get_db()
+    db.execute(
+        "INSERT INTO push_subscriptions (employee_name, endpoint, p256dh, auth, created_at) "
+        "VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(endpoint) DO UPDATE SET employee_name = excluded.employee_name, "
+        "p256dh = excluded.p256dh, auth = excluded.auth",
+        (employee_name, endpoint, p256dh, auth, now_jst().isoformat()),
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+def send_push_to_employee(db, employee_name, title, body):
+    """Best-effort push to every device this employee has enabled
+    notifications on. Never raises — a missing/expired subscription or a
+    push-service hiccup shouldn't block the admin's approve/reject action,
+    the same "fail open" rule notify.send_mail already follows."""
+    subs = db.execute(
+        "SELECT * FROM push_subscriptions WHERE employee_name = ?", (employee_name,)
+    ).fetchall()
+    for sub in subs:
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": sub["endpoint"],
+                    "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
+                },
+                data=json.dumps({"title": title, "body": body}),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": VAPID_SUBJECT},
+            )
+        except WebPushException as e:
+            status = e.response.status_code if e.response is not None else None
+            if status in (404, 410):
+                # The push service says this subscription is gone for good.
+                db.execute("DELETE FROM push_subscriptions WHERE id = ?", (sub["id"],))
+            else:
+                print(f"WARNING: プッシュ通知の送信に失敗しました: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"WARNING: プッシュ通知の送信に失敗しました: {e}", file=sys.stderr)
+    db.commit()
+
+
+@app.route("/sw.js")
+def service_worker():
+    """Served from the root path (not /static/sw.js) so its default scope
+    covers the whole app — a service worker can only control paths at or
+    below the URL it's served from."""
+    return send_file(
+        os.path.join(BASE_DIR, "static", "sw.js"),
+        mimetype="application/javascript",
+    )
+
+
+@app.route("/dashboard/qr.png")
+def dashboard_qr():
+    """A QR code encoding this app's own login URL, so a current employee
+    can hand their phone to someone new instead of spelling out the address."""
+    if not session.get("employee_name"):
+        return redirect(url_for("index"))
+    img = qrcode.make(url_for("index", _external=True))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png")
 
 
 @app.route("/order/cancel-day", methods=["POST"])
@@ -2360,8 +2473,8 @@ def admin_approve_cancel_request():
     db = get_db()
     order_id = request.form.get("order_id")
     order = db.execute(
-        "SELECT o.order_date, m.category FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
-        "WHERE o.id = ?", (order_id,)
+        "SELECT o.order_date, o.employee_name, m.category FROM orders o "
+        "JOIN menu_items m ON o.menu_item_id = m.id WHERE o.id = ?", (order_id,)
     ).fetchone()
     db.execute(
         "UPDATE orders SET status = 'cancelled', cancel_requested_at = NULL, "
@@ -2370,6 +2483,8 @@ def admin_approve_cancel_request():
     )
     if order:
         log_order_change(db, order["order_date"], order["category"], None)
+        send_push_to_employee(db, order["employee_name"], "キャンセル希望が承認されました",
+                               f"{order['order_date']}のキャンセル希望が承認されました。")
     db.commit()
     flash("キャンセル希望を承認し、注文をキャンセルしました。紙のチェック表もあわせて修正してください。", "warning")
     return redirect(url_for("admin_dashboard"))
@@ -2382,10 +2497,15 @@ def admin_reject_cancel_request():
     if not admin_required():
         return redirect(url_for("admin_login"))
     db = get_db()
+    order_id = request.form.get("order_id")
+    order = db.execute("SELECT order_date, employee_name FROM orders WHERE id = ?", (order_id,)).fetchone()
     db.execute(
         "UPDATE orders SET cancel_requested_at = NULL, resolution = 'cancel_rejected' WHERE id = ?",
-        (request.form.get("order_id"),),
+        (order_id,),
     )
+    if order:
+        send_push_to_employee(db, order["employee_name"], "キャンセル希望が却下されました",
+                               f"{order['order_date']}のキャンセル希望は却下されました。注文はそのまま残っています。")
     db.commit()
     flash("キャンセル希望を却下しました(注文はそのまま残っています)。", "success")
     return redirect(url_for("admin_dashboard"))
@@ -2423,6 +2543,8 @@ def admin_approve_change_request():
     )
     if current_item:
         log_order_change(db, order["order_date"], current_item["category"], wanted["category"])
+    send_push_to_employee(db, order["employee_name"], "区分変更が承認されました",
+                           f"{order['order_date']}の注文が「{want_display}」に変更されました。")
     db.commit()
     flash(
         f"{order['employee_name']} さんの{order['order_date']}の注文を"
@@ -2455,6 +2577,9 @@ def admin_reject_change_request():
         "resolution = 'change_rejected', resolution_detail = ? WHERE id = ?",
         (want_display, order_id),
     )
+    if order:
+        send_push_to_employee(db, order["employee_name"], "区分変更が却下されました",
+                               f"{order['order_date']}を「{want_display}」に変更する希望は却下されました。")
     db.commit()
     flash("変更希望を却下しました(注文はそのまま残っています)。", "success")
     return redirect(url_for("admin_dashboard"))
@@ -2470,8 +2595,9 @@ def admin_approve_new_request():
     db = get_db()
     order_id = request.form.get("order_id")
     order = db.execute(
-        "SELECT o.order_date, m.category FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
-        "WHERE o.id = ? AND o.status = 'requested'", (order_id,)
+        "SELECT o.order_date, o.employee_name, m.category FROM orders o "
+        "JOIN menu_items m ON o.menu_item_id = m.id WHERE o.id = ? AND o.status = 'requested'",
+        (order_id,),
     ).fetchone()
     db.execute(
         "UPDATE orders SET status = 'ordered', resolution = 'new_approved' "
@@ -2480,6 +2606,8 @@ def admin_approve_new_request():
     )
     if order:
         log_order_change(db, order["order_date"], None, order["category"])
+        send_push_to_employee(db, order["employee_name"], "新規注文の希望が承認されました",
+                               f"{order['order_date']}の新規注文希望が承認されました。")
     db.commit()
     flash("新規注文の希望を承認しました。りりてーへ伝える食数と紙のチェック表もあわせて修正してください。", "warning")
     return redirect(url_for("admin_dashboard"))
@@ -2492,11 +2620,18 @@ def admin_reject_new_request():
     if not admin_required():
         return redirect(url_for("admin_login"))
     db = get_db()
+    order_id = request.form.get("order_id")
+    order = db.execute(
+        "SELECT order_date, employee_name FROM orders WHERE id = ? AND status = 'requested'", (order_id,)
+    ).fetchone()
     db.execute(
         "UPDATE orders SET status = 'cancelled', resolution = 'new_rejected' "
         "WHERE id = ? AND status = 'requested'",
-        (request.form.get("order_id"),),
+        (order_id,),
     )
+    if order:
+        send_push_to_employee(db, order["employee_name"], "新規注文の希望が却下されました",
+                               f"{order['order_date']}の新規注文希望は却下されました。")
     db.commit()
     flash("新規注文の希望を却下しました。", "success")
     return redirect(url_for("admin_dashboard"))

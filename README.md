@@ -172,6 +172,23 @@ python3 app.py
 
    設定後、管理画面の「設定」タブから**テストメール**を送って届くことを確認してください。PythonAnywhere の無料プランは外部接続が許可リスト制でSMTPが使えないため、SMTPではなくHTTP APIで送っています。
 
+6. **社員への通知(ブラウザプッシュ)**
+   キャンセル・変更・新規注文の申請が承認/却下されたとき、社員側のブラウザにプッシュ通知を送ります。社員のメールアドレスを管理していないため、メールではなく [Web Push](https://developer.mozilla.org/ja/docs/Web/API/Push_API) を使っています。ダッシュボードの「通知を有効にする」ボタンから社員自身が許可した場合のみ届きます。
+
+   送信にはVAPID鍵ペアが必要です。未設定でもコード内蔵のデフォルト鍵で動作しますが、本番では専用の鍵を発行して次の環境変数で上書きすることを推奨します。
+
+   ```bash
+   py -c "from py_vapid import Vapid02; v = Vapid02(); v.generate_keys(); print(v.public_key_str()); print(v.private_key_str())"
+   ```
+
+   | 変数 | 内容 |
+   |---|---|
+   | `BENTO_VAPID_PUBLIC_KEY` | VAPID公開鍵 |
+   | `BENTO_VAPID_PRIVATE_KEY` | VAPID秘密鍵 |
+   | `BENTO_VAPID_SUBJECT` | 連絡先(`mailto:xxx@example.com` の形式、省略時ダミー値) |
+
+   デプロイ時は `pip install -r requirements.txt` で `qrcode`・`pywebpush` が入っていることを確認してください(新規追加の依存関係です)。
+
 ## ディレクトリ構成
 
 ```

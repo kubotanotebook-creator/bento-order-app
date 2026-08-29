@@ -161,6 +161,43 @@
 </div>
 {% endif %}
 
+<div class="card">
+  <h1 style="margin-top:0;">アプリの共有・通知</h1>
+  <div class="dashboard-links">
+    <button type="button" class="btn dashboard-link" id="show-qr-btn">📱 他の人に教える</button>
+    <button type="button" class="btn dashboard-link" id="install-app-btn" hidden>➕ ホーム画面に追加</button>
+    <button type="button" class="btn dashboard-link" id="enable-push-btn">🔔 通知を有効にする</button>
+  </div>
+</div>
+
+<div id="qr-modal" class="confirm-modal-backdrop" hidden>
+  <div class="confirm-modal">
+    <p class="confirm-modal-warning">📱 このQRコードを読み取ってもらってください</p>
+    <div style="text-align:center; margin-bottom:14px;">
+      <img src="{{ url_for('dashboard_qr') }}" alt="QRコード" style="width:220px; height:220px;">
+    </div>
+    <p class="confirm-modal-body" style="word-break:break-all;">{{ request.url_root }}</p>
+    <div class="confirm-modal-actions">
+      <button type="button" class="btn" id="qr-close-btn">閉じる</button>
+      <button type="button" class="btn primary" id="qr-copy-btn">URLをコピー</button>
+    </div>
+  </div>
+</div>
+
+<div id="ios-install-modal" class="confirm-modal-backdrop" hidden>
+  <div class="confirm-modal">
+    <p class="confirm-modal-warning">➕ ホーム画面に追加する方法</p>
+    <p class="confirm-modal-body">
+      1. 画面下(または上)の「共有」ボタン(四角から矢印が出ているアイコン)をタップ<br>
+      2. メニューから「ホーム画面に追加」を選ぶ<br>
+      3. 右上の「追加」をタップ
+    </p>
+    <div class="confirm-modal-actions">
+      <button type="button" class="btn primary" id="ios-install-close-btn">わかった</button>
+    </div>
+  </div>
+</div>
+
 {% if show_tour %}
 <div id="tour-tooltip" class="tour-tooltip" hidden>
   <p id="tour-text" class="tour-text"></p>
@@ -243,5 +280,111 @@
   show(0);
 })();
 {% endif %}
+
+// ---- QRコードで共有 ----
+(function () {
+  var showBtn = document.getElementById('show-qr-btn');
+  var modal = document.getElementById('qr-modal');
+  var closeBtn = document.getElementById('qr-close-btn');
+  var copyBtn = document.getElementById('qr-copy-btn');
+  if (!showBtn) return;
+  showBtn.addEventListener('click', function () { modal.hidden = false; });
+  closeBtn.addEventListener('click', function () { modal.hidden = true; });
+  modal.addEventListener('click', function (e) { if (e.target === modal) modal.hidden = true; });
+  copyBtn.addEventListener('click', function () {
+    navigator.clipboard.writeText(window.location.origin + '/').then(function () {
+      copyBtn.textContent = 'コピーしました';
+      setTimeout(function () { copyBtn.textContent = 'URLをコピー'; }, 2000);
+    }).catch(function () {});
+  });
+})();
+
+// ---- ホーム画面に追加 ----
+(function () {
+  var installBtn = document.getElementById('install-app-btn');
+  var iosModal = document.getElementById('ios-install-modal');
+  var iosCloseBtn = document.getElementById('ios-install-close-btn');
+  if (!installBtn) return;
+  var deferredPrompt = null;
+  var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  var isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+
+  if (isStandalone) {
+    // Already installed — nothing to offer.
+  } else if (isIOS) {
+    installBtn.hidden = false;
+    installBtn.addEventListener('click', function () { iosModal.hidden = false; });
+    iosCloseBtn.addEventListener('click', function () { iosModal.hidden = true; });
+    iosModal.addEventListener('click', function (e) { if (e.target === iosModal) iosModal.hidden = true; });
+  } else {
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.hidden = false;
+    });
+    installBtn.addEventListener('click', function () {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.finally(function () { deferredPrompt = null; installBtn.hidden = true; });
+    });
+  }
+})();
+
+// ---- プッシュ通知を有効にする ----
+(function () {
+  var btn = document.getElementById('enable-push-btn');
+  if (!btn) return;
+  var vapidKey = {{ vapid_public_key|tojson }};
+
+  function urlBase64ToUint8Array(base64String) {
+    var padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    var raw = window.atob(base64);
+    var arr = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    return arr;
+  }
+
+  function setState(text, disabled) {
+    btn.textContent = text;
+    btn.disabled = !!disabled;
+  }
+
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    setState('🔔 このブラウザは通知に対応していません', true);
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    setState('🔔 通知がブロックされています(ブラウザの設定から許可してください)', true);
+    return;
+  }
+
+  navigator.serviceWorker.ready.then(function (reg) {
+    reg.pushManager.getSubscription().then(function (sub) {
+      if (sub) setState('🔔 通知は有効です', true);
+    });
+  }).catch(function () {});
+
+  btn.addEventListener('click', function () {
+    setState('🔔 設定中…', true);
+    navigator.serviceWorker.ready.then(function (reg) {
+      return reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey),
+      });
+    }).then(function (sub) {
+      return fetch('{{ url_for("push_subscribe") }}', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sub.toJSON()),
+      });
+    }).then(function () {
+      setState('🔔 通知は有効です', true);
+    }).catch(function () {
+      setState('🔔 通知を有効にする', false);
+    });
+  });
+})();
 </script>
 {% endblock %}
