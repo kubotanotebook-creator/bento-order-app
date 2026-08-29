@@ -106,13 +106,13 @@
         {% elif day.change_requested %}
         <p class="muted" style="margin-top:4px;">「{{ day.change_want_display }}」への変更希望を送信済みです(松浦さん・陽介さんの確認待ち)</p>
         {% elif not day.is_today and not day.is_past %}
-        <form method="post" action="{{ url_for('order_cancel_day') }}" class="inline-form" style="margin-top:4px;" data-confirm-message="{{ day.date }}のキャンセルを希望として送信します。松浦さんか陽介さんが承認してはじめて正式にキャンセルされます。しばらくしても「キャンセル希望済み」の表示が変わらない場合は、松浦さんか陽介さんに直接確認してください。">
+        <form method="post" action="{{ url_for('order_cancel_day') }}" class="inline-form" style="margin-top:4px;" data-confirm-message="{{ day.date }}のキャンセルを希望として送信します。松浦さんか陽介さんが承認してはじめて正式にキャンセルされます。しばらくしても「キャンセル申請中」の表示が変わらない場合は、松浦さんか陽介さんに直接確認してください。">
           <input type="hidden" name="order_date" value="{{ day.date }}">
           <button type="submit" class="btn small">この日のキャンセルを希望する</button>
         </form>
         {% set others = category_codes | select('in', day.cats) | reject('equalto', day.selected_code) | list %}
         {% if others %}
-        <form method="post" action="{{ url_for('order_change_day') }}" class="inline-form" style="margin-top:4px;" data-confirm-message-template="{{ day.date }}の注文を「{category}」に変更する希望を送信します。松浦さんか陽介さんが承認してはじめて正式に変更されます。しばらくしても「変更希望済み」の表示が変わらない場合は、松浦さんか陽介さんに直接確認してください。">
+        <form method="post" action="{{ url_for('order_change_day') }}" class="inline-form" style="margin-top:4px;" data-confirm-message-template="{{ day.date }}の注文を「{category}」に変更する希望を送信します。松浦さんか陽介さんが承認してはじめて正式に変更されます。しばらくしても「変更申請中」の表示が変わらない場合は、松浦さんか陽介さんに直接確認してください。">
           <input type="hidden" name="order_date" value="{{ day.date }}">
           <select name="category" style="width:auto; margin-bottom:0;">
             {% for code in others %}

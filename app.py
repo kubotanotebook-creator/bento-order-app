@@ -258,6 +258,17 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # column already exists
 
+    # One-shot outcome notice for a resolved cancel/change/new-order request —
+    # the admin and employee are essentially never online at the same time,
+    # so there's no "toast" to show at approval time; this persists the
+    # outcome until the employee's dashboard has displayed it once.
+    for column in ("resolution TEXT", "resolution_detail TEXT"):
+        try:
+            db.execute(f"ALTER TABLE orders ADD COLUMN {column}")
+            db.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
     # Marks whether this person has clicked through the first-login dashboard
     # tour. NULL = not yet — most people won't read a written manual, so a
     # short guided pass over the dashboard's own cards is the fallback.
@@ -448,6 +459,29 @@ def pending_cancel_requests(db):
         row["is_today"] = order_date == today
         out.append(row)
     return out
+
+
+def consume_resolution_notices(db, employee_name):
+    """One-shot "your request was approved/rejected" notices for this
+    employee's dashboard. The admin and employee are essentially never online
+    at the same moment, so there's no live toast to show at approval time —
+    this persists the outcome on the order row and clears it the instant it's
+    read, so it surfaces exactly once on their next visit."""
+    rows = db.execute(
+        "SELECT order_date, resolution, resolution_detail FROM orders "
+        "WHERE employee_name = ? AND resolution IS NOT NULL ORDER BY order_date",
+        (employee_name,),
+    ).fetchall()
+    if not rows:
+        return []
+    notices = [dict(r) for r in rows]
+    db.execute(
+        "UPDATE orders SET resolution = NULL, resolution_detail = NULL "
+        "WHERE employee_name = ? AND resolution IS NOT NULL",
+        (employee_name,),
+    )
+    db.commit()
+    return notices
 
 
 # ---------- Week / deadline helpers ----------
@@ -737,6 +771,9 @@ def index():
     ).fetchone()
     show_tour = bool(tour_row) and tour_row["tour_seen_at"] is None
 
+    # Approve/reject outcomes since their last visit — read once, then gone.
+    resolution_notices = consume_resolution_notices(db, employee_name)
+
     # This week's full Mon-Fri picture, INCLUDING already-passed days —
     # deliberately not reusing menu_by_date/_load_employee_menu_context
     # (those only look from today onward), since "what did I already order
@@ -822,6 +859,7 @@ def index():
         manual_url=EMPLOYEE_MANUAL_URL,
         manual_video_url=EMPLOYEE_MANUAL_VIDEO_URL,
         show_tour=show_tour,
+        resolution_notices=resolution_notices,
     )
 
 
@@ -2233,7 +2271,8 @@ def admin_approve_cancel_request():
         return redirect(url_for("admin_login"))
     db = get_db()
     db.execute(
-        "UPDATE orders SET status = 'cancelled', cancel_requested_at = NULL WHERE id = ?",
+        "UPDATE orders SET status = 'cancelled', cancel_requested_at = NULL, "
+        "resolution = 'cancel_approved' WHERE id = ?",
         (request.form.get("order_id"),),
     )
     db.commit()
@@ -2249,7 +2288,7 @@ def admin_reject_cancel_request():
         return redirect(url_for("admin_login"))
     db = get_db()
     db.execute(
-        "UPDATE orders SET cancel_requested_at = NULL WHERE id = ?",
+        "UPDATE orders SET cancel_requested_at = NULL, resolution = 'cancel_rejected' WHERE id = ?",
         (request.form.get("order_id"),),
     )
     db.commit()
@@ -2277,15 +2316,17 @@ def admin_approve_change_request():
         flash("変更先のメニューが見つかりません(削除された可能性があります)。", "error")
         return redirect(url_for("admin_dashboard"))
 
+    want_display = item_display_name(wanted["category"], wanted["name"])
     db.execute(
         "UPDATE orders SET menu_item_id = ?, change_requested_at = NULL, "
-        "change_requested_item_id = NULL WHERE id = ?",
-        (wanted["id"], order_id),
+        "change_requested_item_id = NULL, resolution = 'change_approved', "
+        "resolution_detail = ? WHERE id = ?",
+        (wanted["id"], want_display, order_id),
     )
     db.commit()
     flash(
         f"{order['employee_name']} さんの{order['order_date']}の注文を"
-        f"「{item_display_name(wanted['category'], wanted['name'])}」に変更しました。"
+        f"「{want_display}」に変更しました。"
         "りりてーへの連絡内容と紙のチェック表もあわせて修正してください。",
         "warning",
     )
@@ -2298,10 +2339,21 @@ def admin_reject_change_request():
     if not admin_required():
         return redirect(url_for("admin_login"))
     db = get_db()
+    order_id = request.form.get("order_id")
+    # Fetch what they'd asked for before clearing it, so the employee's
+    # one-shot notice can still say what was turned down.
+    order = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    want_display = None
+    if order and order["change_requested_item_id"]:
+        wanted = db.execute(
+            "SELECT * FROM menu_items WHERE id = ?", (order["change_requested_item_id"],)
+        ).fetchone()
+        if wanted:
+            want_display = item_display_name(wanted["category"], wanted["name"])
     db.execute(
-        "UPDATE orders SET change_requested_at = NULL, change_requested_item_id = NULL "
-        "WHERE id = ?",
-        (request.form.get("order_id"),),
+        "UPDATE orders SET change_requested_at = NULL, change_requested_item_id = NULL, "
+        "resolution = 'change_rejected', resolution_detail = ? WHERE id = ?",
+        (want_display, order_id),
     )
     db.commit()
     flash("変更希望を却下しました(注文はそのまま残っています)。", "success")
@@ -2317,7 +2369,8 @@ def admin_approve_new_request():
         return redirect(url_for("admin_login"))
     db = get_db()
     db.execute(
-        "UPDATE orders SET status = 'ordered' WHERE id = ? AND status = 'requested'",
+        "UPDATE orders SET status = 'ordered', resolution = 'new_approved' "
+        "WHERE id = ? AND status = 'requested'",
         (request.form.get("order_id"),),
     )
     db.commit()
@@ -2333,7 +2386,8 @@ def admin_reject_new_request():
         return redirect(url_for("admin_login"))
     db = get_db()
     db.execute(
-        "UPDATE orders SET status = 'cancelled' WHERE id = ? AND status = 'requested'",
+        "UPDATE orders SET status = 'cancelled', resolution = 'new_rejected' "
+        "WHERE id = ? AND status = 'requested'",
         (request.form.get("order_id"),),
     )
     db.commit()

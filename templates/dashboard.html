@@ -6,6 +6,22 @@
 {% endblock %}
 {% block content %}
 
+{% for n in resolution_notices %}
+  {% if n.resolution == 'cancel_approved' %}
+    <div class="flash flash-success">✅ {{ n.order_date }}のキャンセル希望が承認されました。</div>
+  {% elif n.resolution == 'cancel_rejected' %}
+    <div class="flash flash-error">❌ {{ n.order_date }}のキャンセル希望は却下されました(注文はそのまま残っています)。</div>
+  {% elif n.resolution == 'change_approved' %}
+    <div class="flash flash-success">✅ {{ n.order_date }}の区分変更が承認され、「{{ n.resolution_detail }}」になりました。</div>
+  {% elif n.resolution == 'change_rejected' %}
+    <div class="flash flash-error">❌ {{ n.order_date }}を「{{ n.resolution_detail }}」に変更する希望は却下されました。</div>
+  {% elif n.resolution == 'new_approved' %}
+    <div class="flash flash-success">✅ {{ n.order_date }}の新規注文希望が承認されました。</div>
+  {% elif n.resolution == 'new_rejected' %}
+    <div class="flash flash-error">❌ {{ n.order_date }}の新規注文希望は却下されました。</div>
+  {% endif %}
+{% endfor %}
+
 <div class="card" data-tour="week">
   <h1 style="margin-top:0;">今週の注文({{ this_week_label }})</h1>
   <div class="week-glance">
@@ -22,11 +38,11 @@
         {% if day.is_past %}
           <div class="glance-status">{{ 'チケット回収済み' if day.paid else 'チケット回収待ち' }}</div>
         {% elif day.cancel_requested %}
-          <div class="glance-status">キャンセル希望済み</div>
+          <div class="glance-status">キャンセル申請中</div>
         {% elif day.change_requested %}
-          <div class="glance-status">変更希望済み</div>
+          <div class="glance-status">変更申請中</div>
         {% elif day.can_cancel %}
-          <form method="post" action="{{ url_for('order_cancel_day') }}" data-confirm-message="{{ day.date }}のキャンセルを希望として送信します。松浦さんか陽介さんが承認してはじめて正式にキャンセルされます。しばらくしても「キャンセル希望済み」の表示が変わらない場合は、松浦さんか陽介さんに直接確認してください。">
+          <form method="post" action="{{ url_for('order_cancel_day') }}" data-confirm-message="{{ day.date }}のキャンセルを希望として送信します。松浦さんか陽介さんが承認してはじめて正式にキャンセルされます。しばらくしても「キャンセル申請中」の表示が変わらない場合は、松浦さんか陽介さんに直接確認してください。">
             <input type="hidden" name="order_date" value="{{ day.date }}">
             <button type="submit" class="glance-cancel-btn">キャンセル</button>
           </form>
@@ -35,7 +51,7 @@
         <div class="glance-dot none" title="注文なし">−</div>
         <div class="glance-cat">なし</div>
         {% if day.new_requested_display %}
-          <div class="glance-status">希望送信中</div>
+          <div class="glance-status">新規注文申請中</div>
         {% endif %}
       {% endif %}
     </div>
@@ -79,11 +95,11 @@
           <div class="glance-dot {{ day.selected_code }}" title="{{ category_labels[day.selected_code] }}">◎</div>
           <div class="glance-cat">{{ category_labels[day.selected_code] }}</div>
           {% if day.cancel_requested %}
-            <div class="glance-status">キャンセル希望済み</div>
+            <div class="glance-status">キャンセル申請中</div>
           {% elif day.change_requested %}
-            <div class="glance-status">変更希望済み</div>
+            <div class="glance-status">変更申請中</div>
           {% elif day.can_cancel %}
-            <form method="post" action="{{ url_for('order_cancel_day') }}" data-confirm-message="{{ day.date }}のキャンセルを希望として送信します。松浦さんか陽介さんが承認してはじめて正式にキャンセルされます。しばらくしても「キャンセル希望済み」の表示が変わらない場合は、松浦さんか陽介さんに直接確認してください。">
+            <form method="post" action="{{ url_for('order_cancel_day') }}" data-confirm-message="{{ day.date }}のキャンセルを希望として送信します。松浦さんか陽介さんが承認してはじめて正式にキャンセルされます。しばらくしても「キャンセル申請中」の表示が変わらない場合は、松浦さんか陽介さんに直接確認してください。">
               <input type="hidden" name="order_date" value="{{ day.date }}">
               <button type="submit" class="glance-cancel-btn">キャンセル</button>
             </form>
@@ -92,7 +108,7 @@
           <div class="glance-dot none" title="注文なし">−</div>
           <div class="glance-cat">なし</div>
           {% if day.new_requested_display %}
-            <div class="glance-status">希望送信中</div>
+            <div class="glance-status">新規注文申請中</div>
           {% endif %}
         {% endif %}
       </div>
