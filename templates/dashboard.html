@@ -34,6 +34,9 @@
       {% else %}
         <div class="glance-dot none" title="注文なし">−</div>
         <div class="glance-cat">なし</div>
+        {% if day.new_requested_display %}
+          <div class="glance-status">希望送信中</div>
+        {% endif %}
       {% endif %}
     </div>
     {% endfor %}
@@ -88,6 +91,9 @@
         {% else %}
           <div class="glance-dot none" title="注文なし">−</div>
           <div class="glance-cat">なし</div>
+          {% if day.new_requested_display %}
+            <div class="glance-status">希望送信中</div>
+          {% endif %}
         {% endif %}
       </div>
       {% endfor %}

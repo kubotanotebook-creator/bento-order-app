@@ -51,12 +51,18 @@
     pendingForm = null;
   }
 
-  document.querySelectorAll('form[data-confirm-message]').forEach(function (form) {
+  document.querySelectorAll('form[data-confirm-message], form[data-confirm-message-template]').forEach(function (form) {
     form.addEventListener('submit', function (e) {
       if (form.dataset.confirmed === '1') return; // already approved via the modal, let it through
       e.preventDefault();
       pendingForm = form;
-      bodyEl.textContent = form.dataset.confirmMessage;
+      var msg = form.dataset.confirmMessage;
+      if (!msg && form.dataset.confirmMessageTemplate) {
+        var sel = form.querySelector('select[name="category"]');
+        var label = sel ? sel.options[sel.selectedIndex].text : '';
+        msg = form.dataset.confirmMessageTemplate.replace('{category}', label);
+      }
+      bodyEl.textContent = msg;
       modal.hidden = false;
     });
   });

@@ -422,9 +422,10 @@ def pending_cancel_requests(db):
         "FROM orders o "
         "JOIN menu_items m ON o.menu_item_id = m.id "
         "LEFT JOIN menu_items w ON o.change_requested_item_id = w.id "
-        "WHERE o.status = 'ordered' "
-        "  AND (o.cancel_requested_at IS NOT NULL OR o.change_requested_at IS NOT NULL) "
-        "ORDER BY COALESCE(o.cancel_requested_at, o.change_requested_at)"
+        "WHERE o.status = 'requested' "
+        "   OR (o.status = 'ordered' "
+        "       AND (o.cancel_requested_at IS NOT NULL OR o.change_requested_at IS NOT NULL)) "
+        "ORDER BY COALESCE(o.cancel_requested_at, o.change_requested_at, o.created_at)"
     ).fetchall()
     today = today_jst()
     out = []
@@ -433,7 +434,10 @@ def pending_cancel_requests(db):
         row["item_display"] = item_display_name(r["category"], r["dish_name"])
         # A cancel request wins if somehow both are set: cancelling makes the
         # pending change moot, and it's the safer of the two to act on.
-        row["kind"] = "cancel" if r["cancel_requested_at"] else "change"
+        if r["status"] == "requested":
+            row["kind"] = "new"
+        else:
+            row["kind"] = "cancel" if r["cancel_requested_at"] else "change"
         row["want_display"] = (
             item_display_name(r["want_category"], r["want_dish_name"])
             if r["want_category"] else None
@@ -845,6 +849,20 @@ def _week_glance(db, employee_name, monday):
     orders_by_date = {o["order_date"]: o for o in order_rows}
     closed_days = get_closed_days(db, monday.isoformat(), friday.isoformat())
 
+    # Pending "please give me a brand-new order" requests (order_request_new)
+    # for days that currently have nothing — kept separate from orders_by_date
+    # since these are NOT confirmed yet and must never look like a real order.
+    requested_rows = db.execute(
+        "SELECT o.order_date, m.category, m.name FROM orders o "
+        "JOIN menu_items m ON o.menu_item_id = m.id "
+        "WHERE o.employee_name = ? AND o.order_date >= ? AND o.order_date <= ? "
+        "AND o.status = 'requested'",
+        (employee_name, monday.isoformat(), friday.isoformat()),
+    ).fetchall()
+    new_requests_by_date = {
+        r["order_date"]: item_display_name(r["category"], r["name"]) for r in requested_rows
+    }
+
     now = now_jst()
     days = []
     for i in range(5):
@@ -886,6 +904,7 @@ def _week_glance(db, employee_name, monday):
             "cancel_requested": cancel_requested,
             "change_requested": change_requested,
             "can_cancel": can_cancel,
+            "new_requested_display": new_requests_by_date.get(d_str),
         })
     return days
 
@@ -922,7 +941,20 @@ def _load_employee_menu_context(db, employee_name, today):
                 my_change_requested[o["order_date"]] = item_display_name(
                     want["category"], want["name"])
 
-    return menu_by_date, my_selection, my_cancel_requested, my_change_requested
+    # Pending "please give me a brand-new order" requests, for days that
+    # currently have nothing (order_request_new) — separate from my_selection
+    # since these aren't confirmed orders yet.
+    my_new_requests = {}
+    requested_rows = db.execute(
+        "SELECT o.order_date, m.category, m.name FROM orders o "
+        "JOIN menu_items m ON o.menu_item_id = m.id "
+        "WHERE o.employee_name = ? AND o.order_date >= ? AND o.status = 'requested'",
+        (employee_name, today.isoformat()),
+    ).fetchall()
+    for r in requested_rows:
+        my_new_requests[r["order_date"]] = item_display_name(r["category"], r["name"])
+
+    return menu_by_date, my_selection, my_cancel_requested, my_change_requested, my_new_requests
 
 
 @app.route("/order")
@@ -934,7 +966,7 @@ def order_page():
     db = get_db()
     settings = get_settings()
     today = today_jst()
-    menu_by_date, my_selection, my_cancel_requested, my_change_requested = \
+    menu_by_date, my_selection, my_cancel_requested, my_change_requested, my_new_requests = \
         _load_employee_menu_context(db, employee_name, today)
 
     # Closed days still get a row on the ordering page (greyed out, no choices)
@@ -970,6 +1002,8 @@ def order_page():
                 "cancel_requested": d_str in my_cancel_requested,
                 "change_requested": d_str in my_change_requested,
                 "change_want_display": my_change_requested.get(d_str),
+                "new_requested": d_str in my_new_requests,
+                "new_requested_display": my_new_requests.get(d_str),
                 "is_past": d < today,
                 "is_today": d == today,
             })
@@ -1204,6 +1238,71 @@ def order_change_day():
             f"[まつうランチ] {employee_name}さんから変更希望({order_date})",
             f"{employee_name}さんが {order_date}({weekday}) の区分を\n"
             f"「{want_display}」に変更したいと希望しています。\n\n"
+            f"管理画面から承認/却下してください。\n"
+            f"{url_for('admin_dashboard', _external=True)}",
+        )
+    return redirect(request.referrer or url_for("index"))
+
+
+@app.route("/order/request-new", methods=["POST"])
+def order_request_new():
+    """Ask for a brand-new order on a day that currently has nothing on it,
+    after that week's deadline has passed. Recorded as status='requested'
+    rather than 'ordered' so it doesn't count as confirmed anywhere (FAX
+    counts, printed checklists, "all ordered" badges) until the admin
+    approves it — the same reasoning as a cancel/change request, just for a
+    day with no order to attach the request to."""
+    employee_name = session.get("employee_name")
+    if not employee_name:
+        return redirect(url_for("index"))
+
+    order_date = request.form.get("order_date", "")
+    category = request.form.get("category", "")
+    today_str = today_jst().isoformat()
+    # Same window as cancelling/changing: a past day is already delivered
+    # (or wasn't, and it's too late either way), and today needs the admin's
+    # morning process once 9:00 has passed.
+    if order_date < today_str:
+        return redirect(request.referrer or url_for("index"))
+    if order_date == today_str and now_jst().time() >= SAME_DAY_CANCEL_CUTOFF:
+        flash("本日分の注文希望は9:00までです。それ以降は松浦さんか陽介さんに直接お伝えください。", "error")
+        return redirect(request.referrer or url_for("index"))
+    if category not in CATEGORY_CODES:
+        return redirect(request.referrer or url_for("index"))
+
+    db = get_db()
+    existing = db.execute(
+        "SELECT id FROM orders WHERE employee_name = ? AND order_date = ? AND status IN ('ordered', 'requested')",
+        (employee_name, order_date),
+    ).fetchone()
+    if existing:
+        flash("すでにこの日の注文、または送信済みの希望があります。", "error")
+        return redirect(request.referrer or url_for("index"))
+
+    menu_item = db.execute(
+        "SELECT * FROM menu_items WHERE item_date = ? AND category = ?", (order_date, category)
+    ).fetchone()
+    if not menu_item:
+        flash("その区分はこの日に登録されていません。", "error")
+        return redirect(request.referrer or url_for("index"))
+
+    settings = get_settings()
+    db.execute(
+        "INSERT INTO orders (order_date, employee_name, menu_item_id, quantity, status, paid, "
+        "unit_price, created_by, created_at) VALUES (?, ?, ?, 1, 'requested', 0, ?, 'self', ?)",
+        (order_date, employee_name, menu_item["id"], settings["price"], now_jst().isoformat()),
+    )
+    db.commit()
+    want_display = item_display_name(menu_item["category"], menu_item["name"])
+    flash(f"{order_date} を「{want_display}」で注文する希望を送信しました。"
+          "松浦さんか陽介さんが確認後、正式に注文されます。", "success")
+
+    if notify.is_configured():
+        weekday = WEEKDAY_JP[date.fromisoformat(order_date).weekday()]
+        notify.send_mail(
+            f"[まつうランチ] {employee_name}さんから新規注文希望({order_date})",
+            f"{employee_name}さんが {order_date}({weekday}) に\n"
+            f"「{want_display}」で新規注文を希望しています。\n\n"
             f"管理画面から承認/却下してください。\n"
             f"{url_for('admin_dashboard', _external=True)}",
         )
@@ -2206,6 +2305,39 @@ def admin_reject_change_request():
     )
     db.commit()
     flash("変更希望を却下しました(注文はそのまま残っています)。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/orders/approve-new-request", methods=["POST"])
+def admin_approve_new_request():
+    """Turn a status='requested' row into a real order. Separate from the
+    request itself so the admin adds it to the FAX count and the printed
+    checklist at the same time."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute(
+        "UPDATE orders SET status = 'ordered' WHERE id = ? AND status = 'requested'",
+        (request.form.get("order_id"),),
+    )
+    db.commit()
+    flash("新規注文の希望を承認しました。りりてーへ伝える食数と紙のチェック表もあわせて修正してください。", "warning")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/orders/reject-new-request", methods=["POST"])
+def admin_reject_new_request():
+    """Dismiss a request for a brand-new order — it was never real, so this
+    just closes it out rather than leaving anything to restore."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute(
+        "UPDATE orders SET status = 'cancelled' WHERE id = ? AND status = 'requested'",
+        (request.form.get("order_id"),),
+    )
+    db.commit()
+    flash("新規注文の希望を却下しました。", "success")
     return redirect(url_for("admin_dashboard"))
 
 
