@@ -694,6 +694,13 @@
       <button type="submit" class="btn small">削除</button>
     </form>
     {% endif %}
+
+    <p class="muted" style="margin-top:10px;">動画リンク(YouTubeなど){% if manual_video_urls[kind] %} — <a href="{{ manual_video_urls[kind] }}" target="_blank" rel="noopener">現在のリンクを開く</a>{% else %}<span class="badge closed">未設定</span>{% endif %}</p>
+    <form method="post" action="{{ url_for('admin_manual_video') }}" class="inline-form">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <input type="url" name="video_url" placeholder="https://youtube.com/..." value="{{ manual_video_urls[kind] or '' }}" style="width:auto; min-width:280px;">
+      <button type="submit" class="btn small">保存</button>
+    </form>
     {% endfor %}
   </div>
 

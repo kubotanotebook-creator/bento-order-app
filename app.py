@@ -89,14 +89,13 @@ WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
 # started, so further changes need to go through 松浦さん/陽介さん directly.
 SAME_DAY_CANCEL_CUTOFF = time(9, 0)
 
-# Links to the how-to manual/video, shown as a card on the employee dashboard
-# and in the admin nav. An admin can upload a PDF straight from the admin
-# screen (admin_manual_upload) — that always wins over these fallbacks, which
-# exist only for the video (not upload-able here) and as a pre-upload default.
+# Links to the how-to manual, shown as a card on the employee dashboard and
+# in the admin nav. An admin can upload a PDF straight from the admin screen
+# (admin_manual_upload) — that always wins over this fallback, which exists
+# only as a pre-upload default. The video link (YouTube etc.) is editable
+# from the same settings tab and lives in the settings table instead.
 EMPLOYEE_MANUAL_URL_FALLBACK = "https://drive.google.com/file/d/1LzblC0b_AUxfNG2oaGQF90rcjO7ZUdCl/view?usp=drivesdk"
-EMPLOYEE_MANUAL_VIDEO_URL = None
 ADMIN_MANUAL_URL_FALLBACK = None
-ADMIN_MANUAL_VIDEO_URL = None
 
 MANUAL_KINDS = ("employee", "admin")
 
@@ -322,6 +321,15 @@ def init_db():
         db.commit()
     except sqlite3.OperationalError:
         pass  # column already exists
+
+    # Manual videos (YouTube etc.) — admin-editable from the settings tab,
+    # same reasoning as the PDF upload: no code deploy needed to swap links.
+    for col in ("employee_manual_video_url", "admin_manual_video_url"):
+        try:
+            db.execute(f"ALTER TABLE settings ADD COLUMN {col} TEXT")
+            db.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     db.close()
 
@@ -980,7 +988,7 @@ def index():
         category_labels=CATEGORY_LABELS,
         today=today.isoformat(),
         manual_url=manual_url("employee", EMPLOYEE_MANUAL_URL_FALLBACK),
-        manual_video_url=EMPLOYEE_MANUAL_VIDEO_URL,
+        manual_video_url=settings["employee_manual_video_url"],
         show_tour=show_tour,
         resolution_notices=resolution_notices,
     )
@@ -1930,9 +1938,12 @@ def admin_dashboard():
         upcoming_closed_days=upcoming_closed_days,
         mail_configured=notify.is_configured(),
         admin_manual_url=manual_url("admin", ADMIN_MANUAL_URL_FALLBACK),
-        admin_manual_video_url=ADMIN_MANUAL_VIDEO_URL,
+        admin_manual_video_url=settings["admin_manual_video_url"],
         manual_uploads={
             kind: os.path.exists(manual_pdf_path(kind)) for kind in MANUAL_KINDS
+        },
+        manual_video_urls={
+            kind: settings[f"{kind}_manual_video_url"] for kind in MANUAL_KINDS
         },
         orders=orders,
         cancel_requests=cancel_requests,
@@ -2211,6 +2222,25 @@ def admin_manual_delete():
     if os.path.exists(path):
         os.remove(path)
         flash("マニュアルを削除しました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/manual/video", methods=["POST"])
+def admin_manual_video():
+    """Sets/clears the YouTube (or any) link shown alongside the PDF manual,
+    stored in settings rather than a file so there's nothing to upload —
+    just a URL an admin can change anytime without a code deploy."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    kind = request.form.get("kind")
+    if kind not in MANUAL_KINDS:
+        return redirect(url_for("admin_dashboard"))
+    video_url = request.form.get("video_url", "").strip() or None
+    db = get_db()
+    db.execute(f"UPDATE settings SET {kind}_manual_video_url = ? WHERE id = 1", (video_url,))
+    db.commit()
+    label = "社員向け" if kind == "employee" else "管理者向け"
+    flash(f"{label}マニュアルの動画リンクを更新しました。" if video_url else f"{label}マニュアルの動画リンクを削除しました。", "success")
     return redirect(url_for("admin_dashboard"))
 
 
