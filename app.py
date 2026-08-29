@@ -18,6 +18,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Overridable so production deploys can point this at a persistent disk mount
 # (the app's own directory is wiped on every redeploy on most PaaS hosts).
 DB_PATH = os.environ.get("BENTO_DB_PATH", os.path.join(BASE_DIR, "bento.db"))
+# Where admin-uploaded manual PDFs live — same persistence caveat as DB_PATH.
+UPLOADS_DIR = os.environ.get("BENTO_UPLOADS_DIR", os.path.join(BASE_DIR, "uploads"))
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 app = Flask(__name__)
 DEFAULT_SECRET_KEY = "dev-secret-change-me"
@@ -87,12 +90,25 @@ WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
 SAME_DAY_CANCEL_CUTOFF = time(9, 0)
 
 # Links to the how-to manual/video, shown as a card on the employee dashboard
-# and in the admin nav. None hides that link — set here once the doc/video
-# exists rather than adding a settings-UI for something this rarely changes.
-EMPLOYEE_MANUAL_URL = "https://drive.google.com/file/d/1LzblC0b_AUxfNG2oaGQF90rcjO7ZUdCl/view?usp=drivesdk"
+# and in the admin nav. An admin can upload a PDF straight from the admin
+# screen (admin_manual_upload) — that always wins over these fallbacks, which
+# exist only for the video (not upload-able here) and as a pre-upload default.
+EMPLOYEE_MANUAL_URL_FALLBACK = "https://drive.google.com/file/d/1LzblC0b_AUxfNG2oaGQF90rcjO7ZUdCl/view?usp=drivesdk"
 EMPLOYEE_MANUAL_VIDEO_URL = None
-ADMIN_MANUAL_URL = None
+ADMIN_MANUAL_URL_FALLBACK = None
 ADMIN_MANUAL_VIDEO_URL = None
+
+MANUAL_KINDS = ("employee", "admin")
+
+
+def manual_pdf_path(kind):
+    return os.path.join(UPLOADS_DIR, f"{kind}_manual.pdf")
+
+
+def manual_url(kind, fallback=None):
+    if os.path.exists(manual_pdf_path(kind)):
+        return url_for("manual_pdf", kind=kind)
+    return fallback
 
 
 @app.template_filter("weekday_jp")
@@ -963,7 +979,7 @@ def index():
         recent_orders=recent_orders,
         category_labels=CATEGORY_LABELS,
         today=today.isoformat(),
-        manual_url=EMPLOYEE_MANUAL_URL,
+        manual_url=manual_url("employee", EMPLOYEE_MANUAL_URL_FALLBACK),
         manual_video_url=EMPLOYEE_MANUAL_VIDEO_URL,
         show_tour=show_tour,
         resolution_notices=resolution_notices,
@@ -1287,6 +1303,21 @@ def service_worker():
         os.path.join(BASE_DIR, "static", "sw.js"),
         mimetype="application/javascript",
     )
+
+
+@app.route("/manual/<kind>.pdf")
+def manual_pdf(kind):
+    """Serves an admin-uploaded manual PDF. No login required for the
+    employee one (same audience as the dashboard card that links here);
+    the admin one is gated since it may cover internal-only workflows."""
+    if kind not in MANUAL_KINDS:
+        return ("", 404)
+    if kind == "admin" and not admin_required():
+        return redirect(url_for("admin_login"))
+    path = manual_pdf_path(kind)
+    if not os.path.exists(path):
+        return ("", 404)
+    return send_file(path, mimetype="application/pdf")
 
 
 @app.route("/dashboard/qr.png")
@@ -1898,8 +1929,11 @@ def admin_dashboard():
         menu_by_date=menu_by_date,
         upcoming_closed_days=upcoming_closed_days,
         mail_configured=notify.is_configured(),
-        admin_manual_url=ADMIN_MANUAL_URL,
+        admin_manual_url=manual_url("admin", ADMIN_MANUAL_URL_FALLBACK),
         admin_manual_video_url=ADMIN_MANUAL_VIDEO_URL,
+        manual_uploads={
+            kind: os.path.exists(manual_pdf_path(kind)) for kind in MANUAL_KINDS
+        },
         orders=orders,
         cancel_requests=cancel_requests,
         today_order_items=today_order_items,
@@ -2136,6 +2170,47 @@ def admin_close_day():
     set_day_closed(db, item_date, request.form.get("reason", "").strip() or DEFAULT_CLOSED_REASON)
     db.commit()
     flash(f"{item_date} を定休日にしました。社員は注文できなくなります。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/manual/upload", methods=["POST"])
+def admin_manual_upload():
+    """Lets an admin replace the 使い方ガイド PDF straight from the admin
+    screen instead of juggling a Google Drive link (that link kept pointing
+    at the wrong/broken file). Overwrites in place — the previous file isn't
+    kept, same as replacing a Drive file's content."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+
+    kind = request.form.get("kind")
+    if kind not in MANUAL_KINDS:
+        return redirect(url_for("admin_dashboard"))
+
+    uploaded = request.files.get("pdf_file")
+    if not uploaded or not uploaded.filename:
+        flash("PDFファイルを選択してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+    if not uploaded.filename.lower().endswith(".pdf"):
+        flash("PDFファイルを選択してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+
+    uploaded.save(manual_pdf_path(kind))
+    label = "社員向け" if kind == "employee" else "管理者向け"
+    flash(f"{label}マニュアルを更新しました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/manual/delete", methods=["POST"])
+def admin_manual_delete():
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    kind = request.form.get("kind")
+    if kind not in MANUAL_KINDS:
+        return redirect(url_for("admin_dashboard"))
+    path = manual_pdf_path(kind)
+    if os.path.exists(path):
+        os.remove(path)
+        flash("マニュアルを削除しました。", "success")
     return redirect(url_for("admin_dashboard"))
 
 

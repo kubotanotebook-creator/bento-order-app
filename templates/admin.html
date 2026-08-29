@@ -671,6 +671,33 @@
   </div>
 
   <div class="card">
+    <h1>使い方マニュアル(PDF)</h1>
+    <p class="muted">ここでアップロードしたPDFが、社員のダッシュボードや管理画面上部の「マニュアル」リンクからそのまま見られます(Googleドライブのリンク管理は不要です)。</p>
+    {% for kind, label in [("employee", "社員向け"), ("admin", "管理者向け")] %}
+    <h3>{{ label }}マニュアル</h3>
+    {% if manual_uploads[kind] %}
+      <p class="muted">
+        <span class="badge open">アップロード済み</span>
+        <a href="{{ url_for('manual_pdf', kind=kind) }}" target="_blank" rel="noopener">現在のPDFを見る</a>
+      </p>
+    {% else %}
+      <p class="muted"><span class="badge closed">未アップロード</span></p>
+    {% endif %}
+    <form method="post" action="{{ url_for('admin_manual_upload') }}" enctype="multipart/form-data" class="inline-form">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <input type="file" name="pdf_file" accept="application/pdf" required>
+      <button type="submit" class="btn small">{{ "差し替える" if manual_uploads[kind] else "アップロード" }}</button>
+    </form>
+    {% if manual_uploads[kind] %}
+    <form method="post" action="{{ url_for('admin_manual_delete') }}" class="inline-form" onsubmit="return confirm('{{ label }}マニュアルを削除しますか?');">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <button type="submit" class="btn small">削除</button>
+    </form>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="card">
     <h1>生年月日の登録リセット</h1>
     <p class="muted">社員用の注文画面は、なりすまし防止のため初回ログイン時の生年月日(月日)を覚えて次回以降と照合しています。本人が生年月日を間違えて登録してしまいログインできなくなった場合、ここでリセットすると次回ログイン時に再登録できます。</p>
     {% if registered_employees %}
