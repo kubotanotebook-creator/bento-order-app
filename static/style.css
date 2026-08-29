@@ -110,6 +110,13 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .table th, .table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; white-space: nowrap; }
 .table th { color: #666; font-weight: 600; }
 
+/* The pending-requests table's 内容 column (dish names, "現在→希望") can get
+   long enough to push the 承認/却下 buttons off the visible width, hiding the
+   one action this table exists for behind a horizontal scroll. Letting that
+   column wrap instead of forcing one line keeps 操作 on screen. */
+.table-requests td:nth-child(3) { white-space: normal; max-width: 320px; }
+.table-requests td:nth-child(4) { white-space: nowrap; }
+
 @media (max-width: 480px) {
   .container { padding: 0 12px 60px; }
   .card { padding: 14px; }

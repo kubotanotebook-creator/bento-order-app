@@ -72,7 +72,7 @@
   <h1>社員からの希望が届いています({{ cancel_requests|length }}件)</h1>
   <p class="muted">締切後に社員本人がアプリから送った、キャンセル・区分変更の希望です。承認すると正式に反映されます。週の紙のチェック表をすでに印刷済みの場合は、承認とあわせて紙の方も手書きで訂正してください。区分変更を承認したときは、りりてーへ伝えた食数の訂正も必要です。</p>
   <div class="table-scroll">
-  <table class="table">
+  <table class="table table-requests">
     <thead><tr><th>日付</th><th>氏名</th><th>内容</th><th>操作</th></tr></thead>
     <tbody>
       {% for o in cancel_requests %}
