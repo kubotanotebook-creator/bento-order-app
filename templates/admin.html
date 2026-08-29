@@ -190,15 +190,13 @@
 <div class="tab-panel" data-tab="tickets">
   <div class="card">
     <h1>チケット受け渡し記録</h1>
-    <p class="muted">紙の「チケット受け渡し表」と同じ内容をここにも記録しておくと、社員のダッシュボードに正確な残り枚数・天引き予定額が表示されます。10枚使い切った人に、10枚渡すたびに1件記録してください。氏名は取り違え防止のため一覧から選んでください(受け渡し記録がない・残り0枚の人を上に表示しています)。</p>
+    <p class="muted">紙の「チケット受け渡し表」と同じ内容をここにも記録しておくと、社員のダッシュボードに正確な残り枚数・天引き予定額が表示されます。10枚使い切った人に、10枚渡すたびに1件記録してください。取り違え防止のため一覧から選ぶのがおすすめです(受け渡し記録がない・残り0枚の人を上に表示しています)が、まだ注文したことがない人の分は直接入力もできます。</p>
     <form method="post" action="{{ url_for('admin_issue_tickets') }}" class="grid-form">
       <label>氏名
-        <select name="employee_name" required>
-          <option value="" disabled selected>選択してください</option>
-          {% for opt in ticket_dropdown_options %}
-          <option value="{{ opt.name }}">{{ opt.label }}</option>
-          {% endfor %}
-        </select>
+        <input type="text" name="employee_name" list="ticket-employee-list" placeholder="例: 山田 太郎" required>
+        <datalist id="ticket-employee-list">
+          {% for opt in ticket_dropdown_options %}<option value="{{ opt.name }}">{{ opt.label }}</option>{% endfor %}
+        </datalist>
       </label>
       <label>渡した日<input type="date" name="issued_at" value="{{ today }}" required></label>
       <button type="submit" class="btn primary">10枚渡した記録を保存</button>

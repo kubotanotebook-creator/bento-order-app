@@ -2038,7 +2038,7 @@ def admin_issue_tickets():
     if not admin_required():
         return redirect(url_for("admin_login"))
     db = get_db()
-    name = request.form.get("employee_name", "").strip()
+    name = resolve_employee_name(db, request.form.get("employee_name", ""))
     issued_at = request.form.get("issued_at", "").strip()
     if not name or not issued_at:
         flash("氏名と日付を入力してください。", "error")
