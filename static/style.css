@@ -300,6 +300,11 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
   z-index: 100;
   padding: 16px;
 }
+/* [hidden] and this class have equal specificity, and author styles beat the
+   UA stylesheet's default `[hidden]{display:none}` at equal specificity — so
+   without this override the modal shows on every page load regardless of the
+   hidden attribute. */
+.confirm-modal-backdrop[hidden] { display: none; }
 .confirm-modal {
   background: #fff;
   border-radius: 14px;
