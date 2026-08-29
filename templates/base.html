@@ -25,5 +25,56 @@
   {% endwith %}
   {% block content %}{% endblock %}
 </main>
+
+<div id="confirm-request-modal" class="confirm-modal-backdrop" hidden>
+  <div class="confirm-modal">
+    <p class="confirm-modal-warning">⚠️ 松浦さん・陽介さんが承認してから確定します</p>
+    <p class="confirm-modal-body" id="confirm-request-body"></p>
+    <div class="confirm-modal-actions">
+      <button type="button" class="btn" id="confirm-request-cancel">やめる</button>
+      <button type="button" class="btn primary" id="confirm-request-ok">送信する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modal = document.getElementById('confirm-request-modal');
+  if (!modal) return;
+  var bodyEl = document.getElementById('confirm-request-body');
+  var okBtn = document.getElementById('confirm-request-ok');
+  var cancelBtn = document.getElementById('confirm-request-cancel');
+  var pendingForm = null;
+
+  function close() {
+    modal.hidden = true;
+    pendingForm = null;
+  }
+
+  document.querySelectorAll('form[data-confirm-message]').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      if (form.dataset.confirmed === '1') return; // already approved via the modal, let it through
+      e.preventDefault();
+      pendingForm = form;
+      bodyEl.textContent = form.dataset.confirmMessage;
+      modal.hidden = false;
+    });
+  });
+
+  okBtn.addEventListener('click', function () {
+    var form = pendingForm;
+    modal.hidden = true;
+    if (form) {
+      form.dataset.confirmed = '1';
+      form.requestSubmit ? form.requestSubmit() : form.submit();
+    }
+    pendingForm = null;
+  });
+  cancelBtn.addEventListener('click', close);
+  modal.addEventListener('click', function (e) {
+    if (e.target === modal) close();
+  });
+})();
+</script>
 </body>
 </html>
