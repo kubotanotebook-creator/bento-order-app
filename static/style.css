@@ -117,6 +117,23 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .table-requests td:nth-child(3) { white-space: normal; max-width: 320px; }
 .table-requests td:nth-child(4) { white-space: nowrap; }
 
+/* At-a-glance 区分ごとの headcount vs what was already FAXed, on the admin's
+   daily attendance card. A flat number is easy to skim past — a colored box
+   per category, with the delta only shown when it's nonzero, is meant to be
+   readable in the few seconds before the 9:00 cutoff. */
+.fax-diff-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.fax-diff-box {
+  flex: 1 1 140px;
+  background: #f4f1ec;
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.fax-diff-box.is-changed { background: #fff4e0; border: 1px solid #f0c869; }
+.fax-diff-label { font-size: 0.8rem; color: #7a7168; font-weight: 700; }
+.fax-diff-current { font-size: 1.4rem; font-weight: 800; color: #2b2420; }
+.fax-diff-delta { font-size: 0.8rem; color: #8a5a00; }
+.fax-diff-delta.muted { color: #888; }
+
 @media (max-width: 480px) {
   .container { padding: 0 12px 60px; }
   .card { padding: 14px; }

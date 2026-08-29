@@ -31,36 +31,61 @@
     <button type="submit" class="btn small">表示</button>
     {% if not is_check_date_today %}<a href="{{ url_for('admin_dashboard') }}" class="btn small">今日に戻す</a>{% endif %}
   </form>
+  {% if today_category_groups %}
+  <div class="fax-diff-row">
+    {% for g in today_category_groups %}
+    <div class="fax-diff-box {{ 'is-changed' if g.diff != 0 }}">
+      <div class="fax-diff-label">{{ g.label }}</div>
+      <div class="fax-diff-current">{{ g.current_count }}食</div>
+      {% if g.diff != 0 %}
+        <div class="fax-diff-delta">FAX時点{{ g.fax_count }}食({{ '▲' if g.diff > 0 else '▼' }}{{ (g.diff if g.diff > 0 else -g.diff) }})</div>
+      {% else %}
+        <div class="fax-diff-delta muted">FAXと変化なし</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="muted" style="margin-top:8px;">「FAX時点」は前週の締切時点の食数です。差があれば、りりてーへの連絡内容の見直しが必要です。</p>
+  {% endif %}
+
   {% if today_orders %}
   <p class="muted">人から聞いたり、Salesforceのチャターで確認したりして「今日休みなのに注文が残っている人」が分かったら、チェックを入れて まとめてキャンセルできます。</p>
+  <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.85rem; margin-bottom:8px;">
+    <input type="checkbox" id="select-all-today"> 全員選択
+  </label>
   <form method="post" action="{{ url_for('admin_bulk_cancel') }}" id="today-orders-form">
-  <div class="table-scroll">
-  <table class="table">
-    <thead><tr><th style="width:1%;"><input type="checkbox" id="select-all-today" title="全員選択"></th><th>氏名</th><th>メニュー</th><th>操作</th></tr></thead>
-    <tbody>
-      {% for o in today_orders %}
-      <tr>
-        <td data-label="">
-          {% if o.status != 'cancelled' %}
-          <input type="checkbox" name="order_ids" value="{{ o.id }}" class="today-row-check">
-          {% endif %}
-        </td>
-        <td data-label="氏名" class="{{ 'is-cancelled' if o.status == 'cancelled' else '' }}">{{ o.employee_name }}</td>
-        <td data-label="メニュー" class="{{ 'is-cancelled' if o.status == 'cancelled' else '' }}">{{ o.item_display }}</td>
-        <td data-label="操作">
-          {% if o.status == 'cancelled' %}
-            <span class="muted" style="font-size:0.8rem; margin-right:6px;">キャンセル済み</span>
-            <button type="submit" formaction="{{ url_for('admin_restore_order') }}" class="btn small" name="order_id" value="{{ o.id }}" onclick="return confirm('{{ o.employee_name }}さんの注文を元に戻しますか?');">元に戻す</button>
-          {% else %}
-          <button type="submit" formaction="{{ url_for('admin_cancel_order') }}" class="btn small" name="order_id" value="{{ o.id }}" onclick="return confirm('{{ o.employee_name }}さんの{{ check_date }}の注文をキャンセルしますか?');">キャンセル</button>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  <button type="submit" class="btn primary" style="margin-top:10px;" id="bulk-cancel-btn" disabled onclick="return confirm('選択した人の注文をまとめてキャンセルしますか?');">選択した人をまとめてキャンセル</button>
+    {% for g in (today_category_groups or [{"label": "", "orders": today_orders}]) %}
+      {% if g.orders %}
+      {% if g.label %}<h3 style="margin-bottom:4px;">{{ g.label }}({{ g.current_count }}名)</h3>{% endif %}
+      <div class="table-scroll" style="margin-bottom:16px;">
+      <table class="table">
+        <thead><tr><th style="width:1%;"></th><th>氏名</th><th>メニュー</th><th>操作</th></tr></thead>
+        <tbody>
+          {% for o in g.orders %}
+          <tr>
+            <td data-label="">
+              {% if o.status != 'cancelled' %}
+              <input type="checkbox" name="order_ids" value="{{ o.id }}" class="today-row-check">
+              {% endif %}
+            </td>
+            <td data-label="氏名" class="{{ 'is-cancelled' if o.status == 'cancelled' else '' }}">{{ o.employee_name }}</td>
+            <td data-label="メニュー" class="{{ 'is-cancelled' if o.status == 'cancelled' else '' }}">{{ o.item_display }}</td>
+            <td data-label="操作">
+              {% if o.status == 'cancelled' %}
+                <span class="muted" style="font-size:0.8rem; margin-right:6px;">キャンセル済み</span>
+                <button type="submit" formaction="{{ url_for('admin_restore_order') }}" class="btn small" name="order_id" value="{{ o.id }}" onclick="return confirm('{{ o.employee_name }}さんの注文を元に戻しますか?');">元に戻す</button>
+              {% else %}
+              <button type="submit" formaction="{{ url_for('admin_cancel_order') }}" class="btn small" name="order_id" value="{{ o.id }}" onclick="return confirm('{{ o.employee_name }}さんの{{ check_date }}の注文をキャンセルしますか?');">キャンセル</button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% endif %}
+    {% endfor %}
+    <button type="submit" class="btn primary" style="margin-top:10px;" id="bulk-cancel-btn" disabled onclick="return confirm('選択した人の注文をまとめてキャンセルしますか?');">選択した人をまとめてキャンセル</button>
   </form>
   {% else %}
   <p class="muted">この日の注文はありません。</p>

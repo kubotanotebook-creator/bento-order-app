@@ -269,6 +269,24 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # column already exists
 
+    # One row per approved cancel/change/new-order request, so the admin's
+    # daily headcount can be reconstructed as it stood at FAX time (the
+    # previous week's deadline) and compared against right now — everything
+    # in here happened strictly after that FAX, since the request/approval
+    # flow only exists for post-deadline changes in the first place.
+    db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS order_change_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_date TEXT NOT NULL,
+            old_category TEXT,
+            new_category TEXT,
+            created_at TEXT NOT NULL
+        );
+        """
+    )
+    db.commit()
+
     # Marks whether this person has clicked through the first-login dashboard
     # tour. NULL = not yet — most people won't read a written manual, so a
     # short guided pass over the dashboard's own cards is the fallback.
@@ -482,6 +500,56 @@ def consume_resolution_notices(db, employee_name):
     )
     db.commit()
     return notices
+
+
+def log_order_change(db, order_date, old_category, new_category):
+    """Record one approved post-deadline change, so the admin's daily
+    headcount can later be reconstructed as of FAX time. `old_category` is
+    what it counted as before (None for a brand-new order), `new_category`
+    is what it counts as now (None for a cancellation)."""
+    db.execute(
+        "INSERT INTO order_change_log (order_date, old_category, new_category, created_at) "
+        "VALUES (?, ?, ?, ?)",
+        (order_date, old_category, new_category, now_jst().isoformat()),
+    )
+
+
+def category_attendance_with_fax_diff(db, check_date_str, day_orders):
+    """Group one day's orders by 区分, each with the current headcount and
+    the count as it stood at FAX time (previous week's deadline) — every
+    approved cancel/change/new-order request since then is logged in
+    order_change_log, so FAX-time count = current count, undoing each log
+    entry (add back what left that category, subtract what arrived into it).
+    This is what 松浦さん actually needs each morning: not the full list
+    again, but how far today's headcount has drifted from what リリテイ
+    already has."""
+    groups = {
+        code: {"code": code, "label": CATEGORY_LABELS[code], "orders": [], "current_count": 0}
+        for code in CATEGORY_CODES
+    }
+    for o in day_orders:
+        g = groups.get(o["category"])
+        if not g:
+            continue
+        g["orders"].append(o)
+        if o["status"] != "cancelled":
+            g["current_count"] += 1
+
+    log_rows = db.execute(
+        "SELECT old_category, new_category FROM order_change_log WHERE order_date = ?",
+        (check_date_str,),
+    ).fetchall()
+    for code, g in groups.items():
+        fax_count = g["current_count"]
+        for lr in log_rows:
+            if lr["old_category"] == code:
+                fax_count += 1
+            if lr["new_category"] == code:
+                fax_count -= 1
+        g["fax_count"] = fax_count
+        g["diff"] = g["current_count"] - fax_count
+
+    return [groups[code] for code in CATEGORY_CODES]
 
 
 # ---------- Week / deadline helpers ----------
@@ -1644,6 +1712,15 @@ def admin_dashboard():
         row["item_display"] = item_display_name(r["category"], r["dish_name"])
         today_orders.append(row)
 
+    # The FAX-vs-now comparison only means anything once that date's week has
+    # actually been FAXed (its ordering deadline has passed) — before that,
+    # counts are still normal and fluid, there's nothing to have drifted from.
+    check_date_obj = date.fromisoformat(check_date_str)
+    today_fax_open = week_is_open(db, week_monday(check_date_obj), settings)
+    today_category_groups = (
+        None if today_fax_open else category_attendance_with_fax_diff(db, check_date_str, today_orders)
+    )
+
     # Weeks derived from the registered menu (from today onward), each with
     # its effective deadline, so the admin can manually pin a deadline for a
     # given week right where that week's menu was registered, instead of
@@ -1693,6 +1770,7 @@ def admin_dashboard():
         future_weeks=future_weeks,
         past_months=past_months,
         today_orders=today_orders,
+        today_category_groups=today_category_groups,
         check_date=check_date_str,
         check_date_weekday=check_date_weekday,
         is_check_date_today=(check_date_str == today_str),
@@ -2255,7 +2333,17 @@ def admin_cancel_order():
     if not admin_required():
         return redirect(url_for("admin_login"))
     db = get_db()
-    db.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (request.form.get("order_id"),))
+    order_id = request.form.get("order_id")
+    order = db.execute(
+        "SELECT o.order_date, m.category FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
+        "WHERE o.id = ?", (order_id,)
+    ).fetchone()
+    db.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
+    # Only logged once that date's week has actually been FAXed — cancelling
+    # a future, not-yet-FAXed order (e.g. undoing a proxy-entry mistake)
+    # never drifted from anything, so it shouldn't count as a change.
+    if order and not week_is_open(db, week_monday(date.fromisoformat(order["order_date"])), get_settings()):
+        log_order_change(db, order["order_date"], order["category"], None)
     db.commit()
     flash("注文をキャンセルしました。", "success")
     return redirect(url_for("admin_dashboard"))
@@ -2270,11 +2358,18 @@ def admin_approve_cancel_request():
     if not admin_required():
         return redirect(url_for("admin_login"))
     db = get_db()
+    order_id = request.form.get("order_id")
+    order = db.execute(
+        "SELECT o.order_date, m.category FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
+        "WHERE o.id = ?", (order_id,)
+    ).fetchone()
     db.execute(
         "UPDATE orders SET status = 'cancelled', cancel_requested_at = NULL, "
         "resolution = 'cancel_approved' WHERE id = ?",
-        (request.form.get("order_id"),),
+        (order_id,),
     )
+    if order:
+        log_order_change(db, order["order_date"], order["category"], None)
     db.commit()
     flash("キャンセル希望を承認し、注文をキャンセルしました。紙のチェック表もあわせて修正してください。", "warning")
     return redirect(url_for("admin_dashboard"))
@@ -2309,6 +2404,9 @@ def admin_approve_change_request():
         flash("対象の変更希望が見つかりません。", "error")
         return redirect(url_for("admin_dashboard"))
 
+    current_item = db.execute(
+        "SELECT * FROM menu_items WHERE id = ?", (order["menu_item_id"],)
+    ).fetchone()
     wanted = db.execute(
         "SELECT * FROM menu_items WHERE id = ?", (order["change_requested_item_id"],)
     ).fetchone()
@@ -2323,6 +2421,8 @@ def admin_approve_change_request():
         "resolution_detail = ? WHERE id = ?",
         (wanted["id"], want_display, order_id),
     )
+    if current_item:
+        log_order_change(db, order["order_date"], current_item["category"], wanted["category"])
     db.commit()
     flash(
         f"{order['employee_name']} さんの{order['order_date']}の注文を"
@@ -2368,11 +2468,18 @@ def admin_approve_new_request():
     if not admin_required():
         return redirect(url_for("admin_login"))
     db = get_db()
+    order_id = request.form.get("order_id")
+    order = db.execute(
+        "SELECT o.order_date, m.category FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
+        "WHERE o.id = ? AND o.status = 'requested'", (order_id,)
+    ).fetchone()
     db.execute(
         "UPDATE orders SET status = 'ordered', resolution = 'new_approved' "
         "WHERE id = ? AND status = 'requested'",
-        (request.form.get("order_id"),),
+        (order_id,),
     )
+    if order:
+        log_order_change(db, order["order_date"], None, order["category"])
     db.commit()
     flash("新規注文の希望を承認しました。りりてーへ伝える食数と紙のチェック表もあわせて修正してください。", "warning")
     return redirect(url_for("admin_dashboard"))
@@ -2409,7 +2516,18 @@ def admin_bulk_cancel():
         flash("キャンセルする人を選択してください。", "error")
         return redirect(url_for("admin_dashboard"))
     placeholders = ",".join("?" * len(order_ids))
+    settings = get_settings()
+    rows = db.execute(
+        f"SELECT o.id, o.order_date, m.category FROM orders o "
+        f"JOIN menu_items m ON o.menu_item_id = m.id WHERE o.id IN ({placeholders})",
+        order_ids,
+    ).fetchall()
     db.execute(f"UPDATE orders SET status = 'cancelled' WHERE id IN ({placeholders})", order_ids)
+    # Same rule as admin_cancel_order: only counts as drift from FAX once
+    # that date's week has actually been FAXed.
+    for r in rows:
+        if not week_is_open(db, week_monday(date.fromisoformat(r["order_date"])), settings):
+            log_order_change(db, r["order_date"], r["category"], None)
     db.commit()
     flash(f"{len(order_ids)}件の注文をキャンセルしました。", "success")
     return redirect(url_for("admin_dashboard"))
@@ -2437,12 +2555,18 @@ def admin_restore_order():
         return redirect(url_for("admin_dashboard"))
     try:
         db.execute("UPDATE orders SET status = 'ordered' WHERE id = ?", (order_id,))
-        db.commit()
     except sqlite3.IntegrityError:
         # The unique index caught a same-day active order created between the
         # conflict check above and here.
         flash(f"{order['employee_name']} さんは既にこの日の別の注文があるため元に戻せません。", "error")
         return redirect(url_for("admin_dashboard"))
+    # Mirrors admin_cancel_order's own rule: only logged (as an addition
+    # this time) if that date's week was already FAXed.
+    if not week_is_open(db, week_monday(date.fromisoformat(order["order_date"])), get_settings()):
+        item = db.execute("SELECT category FROM menu_items WHERE id = ?", (order["menu_item_id"],)).fetchone()
+        if item:
+            log_order_change(db, order["order_date"], None, item["category"])
+    db.commit()
     flash(f"{order['employee_name']} さんの注文を元に戻しました。", "success")
     return redirect(url_for("admin_dashboard"))
 
