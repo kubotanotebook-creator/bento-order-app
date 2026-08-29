@@ -94,7 +94,42 @@
     <button type="submit" class="btn primary" style="margin-top: 12px;">この週の注文を確定・更新する</button>
   </form>
   {% else %}
+    {% set request_eligible = [] %}
     {% for day in week.days %}
+      {% if not day.closed_reason and not day.selected_code and not day.new_requested and not day.is_today and not day.is_past and day.cats %}
+        {% set _ = request_eligible.append(day) %}
+      {% endif %}
+    {% endfor %}
+    {% if request_eligible %}
+    <form method="post" action="{{ url_for('order_request_week') }}" data-confirm-message="締切後のこの週について、選んだ日を新規に注文する希望をまとめて送信します。松浦さんか陽介さんが承認してはじめて正式に注文されます。しばらくしても表示が変わらない場合は、松浦さんか陽介さんに直接確認してください。">
+      <input type="hidden" name="week_monday" value="{{ week.monday }}">
+      <p class="muted">締切を過ぎていますが、まだ注文がない日はここでまとめて注文希望を出せます(承認後に正式な注文になります)。</p>
+      {% for day in request_eligible %}
+      <div class="day-row">
+        <div class="day-title">{{ day.date }}({{ day.weekday }})</div>
+        <div class="day-choices">
+          {% for code in category_codes %}
+            {% if code in day.cats %}
+            <label class="{{ code }}">
+              <input type="radio" name="day_{{ day.date }}" value="{{ code }}">
+              <span class="choice-dot {{ code }}"></span>
+              <span>{{ category_labels[code] }}: {{ day.cats[code].name }}</span>
+            </label>
+            {% endif %}
+          {% endfor %}
+          <label class="none">
+            <input type="radio" name="day_{{ day.date }}" value="none" checked>
+            <span class="choice-dot none"></span>
+            <span>注文しない</span>
+          </label>
+        </div>
+      </div>
+      {% endfor %}
+      <button type="submit" class="btn small" style="margin-top:8px;">選んだ日をまとめて注文希望する</button>
+    </form>
+    {% endif %}
+    {% for day in week.days %}
+      {% if day not in request_eligible %}
     <div class="day-row{% if day.closed_reason %} is-closed-day{% endif %}">
       <div class="day-title">{{ day.date }}({{ day.weekday }})</div>
       {% if day.closed_reason %}
@@ -127,21 +162,10 @@
         <div class="muted">注文なし</div>
         {% if day.new_requested %}
         <p class="muted" style="margin-top:4px;">「{{ day.new_requested_display }}」で新規注文の希望を送信済みです(松浦さん・陽介さんの確認待ち)</p>
-        {% elif not day.is_today and not day.is_past and day.cats %}
-        <form method="post" action="{{ url_for('order_request_new') }}" class="inline-form" style="margin-top:4px;" data-confirm-message-template="{{ day.date }}を「{category}」で新規に注文する希望を送信します。松浦さんか陽介さんが承認してはじめて正式に注文されます。しばらくしても「希望を送信済み」の表示が変わらない場合は、松浦さんか陽介さんに直接確認してください。">
-          <input type="hidden" name="order_date" value="{{ day.date }}">
-          <select name="category" style="width:auto; margin-bottom:0;">
-            {% for code in category_codes %}
-              {% if code in day.cats %}
-              <option value="{{ code }}">{{ category_labels[code] }}: {{ day.cats[code].name }}</option>
-              {% endif %}
-            {% endfor %}
-          </select>
-          <button type="submit" class="btn small">この日を注文希望する</button>
-        </form>
         {% endif %}
       {% endif %}
     </div>
+      {% endif %}
     {% endfor %}
   {% endif %}
 </div>

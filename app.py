@@ -926,6 +926,20 @@ def index():
             (employee_name, cycle_start.isoformat(), cycle_end.isoformat()),
         ).fetchall()
     ]
+    # Just enough of "what did I order before" to be useful at a glance
+    # without turning the dashboard into the full history page: the couple
+    # of most recent orders from before this week (this week's own days are
+    # already shown day-by-day above, so repeating them here would be noise).
+    recent_orders = [dict(r) for r in db.execute(
+        "SELECT o.order_date, m.category as category, m.name as dish_name "
+        "FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
+        "WHERE o.employee_name = ? AND o.status = 'ordered' AND o.order_date < ? "
+        "ORDER BY o.order_date DESC LIMIT 2",
+        (employee_name, this_monday.isoformat()),
+    ).fetchall()]
+    for r in recent_orders:
+        r["item_display"] = item_display_name(r["category"], r["dish_name"])
+
     deduction_date = payroll_deduction_date(cycle_end)
     cycle_summary = {
         "label": f"{cycle_start.month}/{cycle_start.day}〜{cycle_end.month}/{cycle_end.day}",
@@ -946,6 +960,7 @@ def index():
         next_week_days=next_week_days,
         ticket_status=ticket_status,
         cycle_summary=cycle_summary,
+        recent_orders=recent_orders,
         category_labels=CATEGORY_LABELS,
         today=today.isoformat(),
         manual_url=EMPLOYEE_MANUAL_URL,
@@ -1460,6 +1475,83 @@ def order_request_new():
             f"管理画面から承認/却下してください。\n"
             f"{url_for('admin_dashboard', _external=True)}",
         )
+    return redirect(request.referrer or url_for("index"))
+
+
+@app.route("/order/request-week", methods=["POST"])
+def order_request_week():
+    """Same as order_request_new, but for every day of one week at once —
+    for someone who missed the deadline entirely and doesn't want to submit
+    five separate day-by-day requests. Mirrors order_week's per-day radio
+    form, just inserting status='requested' rows instead of 'ordered' ones,
+    and silently skipping any day that fails a per-day check (already
+    requested elsewhere, no menu for that choice, etc.) rather than failing
+    the whole batch."""
+    employee_name = session.get("employee_name")
+    if not employee_name:
+        return redirect(url_for("index"))
+
+    monday_str = request.form.get("week_monday")
+    try:
+        monday = date.fromisoformat(monday_str)
+    except (TypeError, ValueError):
+        return redirect(url_for("order_page"))
+
+    db = get_db()
+    today_str = today_jst().isoformat()
+    requested = []
+
+    for i in range(5):
+        d = monday + timedelta(days=i)
+        d_str = d.isoformat()
+        field = f"day_{d_str}"
+        choice = request.form.get(field)
+        if not choice or choice == "none":
+            continue
+        if d_str < today_str:
+            continue
+        if d_str == today_str and now_jst().time() >= SAME_DAY_CANCEL_CUTOFF:
+            continue
+        if choice not in CATEGORY_CODES:
+            continue
+
+        existing = db.execute(
+            "SELECT id FROM orders WHERE employee_name = ? AND order_date = ? AND status IN ('ordered', 'requested')",
+            (employee_name, d_str),
+        ).fetchone()
+        if existing:
+            continue
+
+        menu_item = db.execute(
+            "SELECT * FROM menu_items WHERE item_date = ? AND category = ?", (d_str, choice)
+        ).fetchone()
+        if not menu_item:
+            continue
+
+        settings = get_settings()
+        db.execute(
+            "INSERT INTO orders (order_date, employee_name, menu_item_id, quantity, status, paid, "
+            "unit_price, created_by, created_at) VALUES (?, ?, ?, 1, 'requested', 0, ?, 'self', ?)",
+            (d_str, employee_name, menu_item["id"], settings["price"], now_jst().isoformat()),
+        )
+        requested.append((d_str, item_display_name(menu_item["category"], menu_item["name"])))
+
+    if requested:
+        db.commit()
+        summary = "、".join(f"{d}: {label}" for d, label in requested)
+        flash(f"{len(requested)}日分の新規注文希望を送信しました({summary})。"
+              "松浦さんか陽介さんが確認後、正式に注文されます。", "success")
+        if notify.is_configured():
+            body_lines = "\n".join(f"・{d}({WEEKDAY_JP[date.fromisoformat(d).weekday()]}): {label}" for d, label in requested)
+            notify.send_mail(
+                f"[まつうランチ] {employee_name}さんから新規注文希望({len(requested)}日分)",
+                f"{employee_name}さんが以下の新規注文を希望しています。\n\n{body_lines}\n\n"
+                f"管理画面から承認/却下してください。\n"
+                f"{url_for('admin_dashboard', _external=True)}",
+            )
+    else:
+        flash("選択した内容では注文希望を送信できませんでした。", "error")
+
     return redirect(request.referrer or url_for("index"))
 
 

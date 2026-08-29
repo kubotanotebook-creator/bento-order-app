@@ -22,6 +22,10 @@
   {% endif %}
 {% endfor %}
 
+<div class="card">
+  <a class="btn primary dashboard-link" href="{{ url_for('order_page') }}" data-tour="order-btn" style="display:block; text-align:center; font-size:1.1rem;">🍱 お弁当を注文する</a>
+</div>
+
 <div class="card" data-tour="week">
   <h1 style="margin-top:0;">今週の注文({{ this_week_label }})</h1>
   <div class="week-glance">
@@ -146,10 +150,13 @@
 </div>
 
 <div class="card">
-  <div class="dashboard-links">
-    <a class="btn primary dashboard-link" href="{{ url_for('order_page') }}" data-tour="order-btn">🍱 お弁当を注文する</a>
-    <a class="btn dashboard-link" href="{{ url_for('my_orders') }}">📋 注文履歴・費用を見る</a>
-  </div>
+  <h1 style="margin-top:0;">注文履歴</h1>
+  {% if recent_orders %}
+  <p class="muted" style="margin-bottom:0;">直近の注文: {% for o in recent_orders %}{{ o.order_date }}({{ o.order_date|weekday_jp }}) {{ o.item_display }}{% if not loop.last %}、{% endif %}{% endfor %}</p>
+  {% else %}
+  <p class="muted" style="margin-bottom:0;">まだ注文履歴がありません。</p>
+  {% endif %}
+  <p class="muted" style="margin-bottom:0;"><a href="{{ url_for('my_orders') }}">すべての注文履歴・費用を見る</a></p>
 </div>
 
 {% if manual_url or manual_video_url %}
@@ -232,10 +239,10 @@
 {% if show_tour %}
 (function () {
   var steps = [
+    { sel: '[data-tour="order-btn"]', text: 'ここから毎週の注文ができます。使い方に迷ったら、下のマニュアルもいつでも見られます。' },
     { sel: '[data-tour="week"]', text: 'ここに今週の注文状況が表示されます。過去の日はチケット回収状況、これからの日はキャンセルボタンが出ます。' },
     { sel: '[data-tour="next-week"]', text: '来週の注文状況と締切はここで確認できます。まだ注文していなければここでわかります。' },
     { sel: '[data-tour="tickets"]', text: 'チケットの残り枚数と、最後にもらった日がここでわかります。下には今月の天引き予定額も表示されます。' },
-    { sel: '[data-tour="order-btn"]', text: 'ここから毎週の注文ができます。使い方に迷ったら、下のマニュアルもいつでも見られます。' },
   ].filter(function (s) { return document.querySelector(s.sel); });
 
   if (!steps.length) return;
