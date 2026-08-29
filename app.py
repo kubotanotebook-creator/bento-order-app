@@ -8,6 +8,7 @@ from datetime import datetime, date, time, timedelta
 from zoneinfo import ZoneInfo
 from flask import Flask, g, request, session, redirect, url_for, render_template, flash, jsonify, send_file
 
+import jpholiday
 import qrcode
 
 from menu_pdf_parser import parse_menu_pdf
@@ -675,6 +676,17 @@ def payroll_cycle(d):
     return start, end
 
 
+def payroll_deduction_date(cycle_end):
+    """The actual payday a cycle's ticket cost is deducted on: the 25th of
+    the month the cycle ends in, moved earlier to the last preceding
+    business day if the 25th falls on a weekend or public holiday (this
+    company's payday rule)."""
+    d = cycle_end.replace(day=25)
+    while d.weekday() >= 5 or jpholiday.is_holiday(d):
+        d -= timedelta(days=1)
+    return d
+
+
 def employee_ticket_status(db, employee_name, today):
     """Ticket status from the logged 受け渡し記録 (admin_issue_tickets): the
     last booklet handed out, minus bento actually picked up since that
@@ -914,6 +926,7 @@ def index():
             (employee_name, cycle_start.isoformat(), cycle_end.isoformat()),
         ).fetchall()
     ]
+    deduction_date = payroll_deduction_date(cycle_end)
     cycle_summary = {
         "label": f"{cycle_start.month}/{cycle_start.day}〜{cycle_end.month}/{cycle_end.day}",
         "booklets": cycle_booklets,
@@ -921,6 +934,7 @@ def index():
         "price_per_booklet": price_per_booklet,
         "order_count": cycle_order_count,
         "issuance_dates": cycle_issuance_dates,
+        "deduction_date_label": f"{deduction_date.month}/{deduction_date.day}",
     }
 
     return render_template(
@@ -1455,12 +1469,13 @@ def my_orders():
     if not employee_name:
         return redirect(url_for("index"))
     db = get_db()
+    today = today_jst()
     raw = db.execute(
         "SELECT o.*, m.category as category, m.name as dish_name "
         "FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
-        "WHERE o.employee_name = ? AND o.status = 'ordered' "
+        "WHERE o.employee_name = ? AND o.status = 'ordered' AND o.order_date <= ? "
         "ORDER BY o.order_date DESC",
-        (employee_name,),
+        (employee_name, today.isoformat()),
     ).fetchall()
     settings = get_settings()
     rows = []
@@ -1491,9 +1506,6 @@ def my_orders():
             "unpaid_total": sum(r["unit_price"] * r["quantity"] for r in cycle_rows if not r["paid"]),
         })
 
-    total = sum(r["unit_price"] * r["quantity"] for r in rows)
-    unpaid_total = sum(r["unit_price"] * r["quantity"] for r in rows if not r["paid"])
-
     # A second, simpler view of the same orders for "what did I eat and
     # when" browsing: month, then week within the month, newest first
     # throughout (rows/order_dates are already DESC from the query above).
@@ -1509,8 +1521,6 @@ def my_orders():
         "my_orders.html",
         employee_name=employee_name,
         cycles=cycles,
-        total=total,
-        unpaid_total=unpaid_total,
         history_months=history_months,
     )
 

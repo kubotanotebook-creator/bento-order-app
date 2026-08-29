@@ -136,6 +136,7 @@
   <div class="summary-row">
     <div class="stat"><span class="stat-label">受け渡し</span><span class="stat-value">{{ cycle_summary.booklets }}冊</span></div>
     <div class="stat"><span class="stat-label">天引き予定額</span><span class="stat-value">¥{{ cycle_summary.total }}</span></div>
+    <div class="stat"><span class="stat-label">天引き日</span><span class="stat-value">{{ cycle_summary.deduction_date_label }}</span></div>
   </div>
   <p class="muted" style="margin-bottom:0;">松浦さん・陽介さんの受け渡し記録(10枚1冊 ¥{{ cycle_summary.price_per_booklet }})にもとづく金額です。</p>
   <p class="muted" style="margin-bottom:0;">受け渡し日: {% for d in cycle_summary.issuance_dates %}{{ d }}({{ d|weekday_jp }}){% if not loop.last %}、{% endif %}{% endfor %}</p>
