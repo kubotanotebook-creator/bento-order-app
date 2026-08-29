@@ -575,7 +575,11 @@ def employee_ticket_status(db, employee_name, today):
     return {
         "known": True,
         "remaining": max(0, last_issuance["quantity"] - used_since_issuance),
-        "total": last_issuance["quantity"],
+        # Always the booklet size (10), not last_issuance["quantity"] — for a
+        # kind='opening' row that quantity is the go-live remaining count
+        # (e.g. 3), not a full booklet, so showing it as the denominator would
+        # display "3/3" instead of the intended "3/10".
+        "total": 10,
         "issued_at": last_issuance["issued_at"],
     }
 
