@@ -166,7 +166,7 @@
   <div class="dashboard-links">
     <button type="button" class="btn dashboard-link" id="show-qr-btn">📱 他の人に教える</button>
     <button type="button" class="btn dashboard-link" id="install-app-btn" hidden>➕ ホーム画面に追加</button>
-    <button type="button" class="btn dashboard-link" id="enable-push-btn">🔔 通知を有効にする</button>
+    <button type="button" class="btn dashboard-link" id="enable-push-btn" hidden>🔔 通知を有効にする</button>
   </div>
 </div>
 
@@ -350,6 +350,16 @@
     btn.disabled = !!disabled;
   }
 
+  var isStandalonePush = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  var isIOSPush = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+
+  if (isIOSPush && !isStandalonePush) {
+    // iOSはホーム画面に追加してそのアイコンから開いた場合のみ通知に対応しており
+    // (PushManager自体が存在しない)、Safariのタブで開いている間は押しても
+    // 何もできないのでボタンごと出さない。
+    return;
+  }
+  btn.hidden = false;
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     setState('🔔 このブラウザは通知に対応していません', true);
     return;
