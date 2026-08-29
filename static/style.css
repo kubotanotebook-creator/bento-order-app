@@ -259,6 +259,34 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 }
 .glance-cancel-btn:hover { background: #fff4ec; }
 
+/* First-login dashboard tour: a highlight ring around the current card plus
+   a fixed bottom bar, rather than a full dimming overlay — simpler to get
+   right and doesn't block the page underneath if someone scrolls around. */
+.tour-highlight {
+  position: relative;
+  z-index: 30;
+  outline: 3px solid #d9480f;
+  outline-offset: 2px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 6px rgba(217, 72, 15, 0.15);
+}
+.tour-tooltip {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 40;
+  width: min(92vw, 480px);
+  background: #2b2420;
+  color: #fff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+.tour-text { margin: 0 0 10px; font-size: 0.9rem; line-height: 1.4; }
+.tour-controls { display: flex; align-items: center; gap: 8px; }
+.tour-step { color: #c9bdb3; font-size: 0.8rem; margin-right: auto; }
+
 @media (max-width: 480px) {
   .glance-dot { width: 28px; height: 28px; line-height: 28px; font-size: 0.85rem; }
   .glance-dot.none { line-height: 24px; }

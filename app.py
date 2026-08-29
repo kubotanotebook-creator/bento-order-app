@@ -258,6 +258,15 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # column already exists
 
+    # Marks whether this person has clicked through the first-login dashboard
+    # tour. NULL = not yet — most people won't read a written manual, so a
+    # short guided pass over the dashboard's own cards is the fallback.
+    try:
+        db.execute("ALTER TABLE employees ADD COLUMN tour_seen_at TEXT")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
     db.close()
 
 
@@ -716,6 +725,14 @@ def index():
     settings = get_settings()
     today = today_jst()
 
+    # Most people won't open a written manual, so first-time visitors get a
+    # short guided pass over the dashboard's own cards instead. NULL means
+    # "hasn't clicked through it yet" (set the moment they finish or skip it).
+    tour_row = db.execute(
+        "SELECT tour_seen_at FROM employees WHERE name = ?", (employee_name,)
+    ).fetchone()
+    show_tour = bool(tour_row) and tour_row["tour_seen_at"] is None
+
     # This week's full Mon-Fri picture, INCLUDING already-passed days —
     # deliberately not reusing menu_by_date/_load_employee_menu_context
     # (those only look from today onward), since "what did I already order
@@ -742,6 +759,12 @@ def index():
         "deadline_str": get_week_deadline(db, next_monday, settings).strftime("%m/%d(%a) %H:%M"),
         "ordered_count": next_week_ordered,
         "orderable_count": next_week_orderable,
+        # This week's own Mon-Fri is over by Sat/Sun, so 来週's detail is the
+        # more useful thing to see without an extra click — but only on the
+        # weekend; expanding it by default on weekdays would just make it
+        # look like "this week" and confuse people (the reason it started
+        # collapsed in the first place).
+        "expand_by_default": today.weekday() >= 5,
     }
 
     ticket_status = employee_ticket_status(db, employee_name, today)
@@ -794,6 +817,7 @@ def index():
         today=today.isoformat(),
         manual_url=EMPLOYEE_MANUAL_URL,
         manual_video_url=EMPLOYEE_MANUAL_VIDEO_URL,
+        show_tour=show_tour,
     )
 
 
@@ -1057,6 +1081,22 @@ def order_week():
     db.commit()
     flash("注文を更新しました。", "success")
     return redirect(url_for("order_page"))
+
+
+@app.route("/tour/seen", methods=["POST"])
+def tour_seen():
+    """Mark the dashboard tour as watched, whether finished or skipped —
+    either way it shouldn't come back. Fails silently (no flash, no error
+    page): this fires from a background fetch(), not a user-facing form."""
+    employee_name = session.get("employee_name")
+    if employee_name:
+        db = get_db()
+        db.execute(
+            "UPDATE employees SET tour_seen_at = ? WHERE name = ?",
+            (now_jst().isoformat(), employee_name),
+        )
+        db.commit()
+    return ("", 204)
 
 
 @app.route("/order/cancel-day", methods=["POST"])

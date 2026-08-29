@@ -6,7 +6,7 @@
 {% endblock %}
 {% block content %}
 
-<div class="card">
+<div class="card" data-tour="week">
   <h1 style="margin-top:0;">今週の注文({{ this_week_label }})</h1>
   <div class="week-glance">
     {% for day in this_week_days %}
@@ -45,7 +45,7 @@
   {% endfor %}
 </div>
 
-<div class="card">
+<div class="card" data-tour="next-week">
   <h1 style="margin-top:0;">来週({{ next_week_status.label }})</h1>
   {% if not next_week_status.menu_exists %}
     <p class="muted" style="margin-bottom:0;">まだメニューが登録されていません。</p>
@@ -60,10 +60,10 @@
   <p class="muted" style="margin-bottom:5px;">締切後です。キャンセルは下のボタンから、区分の変更は<a href="{{ url_for('order_page') }}">注文画面</a>から希望を出せます(松浦さん・陽介さんの確認後に反映されます)。</p>
   {% endif %}
   {% if next_week_status.menu_exists %}
-  <button type="button" class="date-toggle-btn" data-target="next-week-glance" style="margin-bottom:0;">
+  <button type="button" class="date-toggle-btn {{ 'is-open' if next_week_status.expand_by_default }}" data-target="next-week-glance" style="margin-bottom:0;">
     <span class="chevron">▶</span> 来週の内訳を見る
   </button>
-  <div class="date-group-body" id="next-week-glance" hidden>
+  <div class="date-group-body" id="next-week-glance" {% if not next_week_status.expand_by_default %}hidden{% endif %}>
     <div class="week-glance">
       {% for day in next_week_days %}
       <div class="glance-cell">
@@ -96,7 +96,7 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" data-tour="tickets">
   <h1 style="margin-top:0;">チケット残り枚数</h1>
   {% if ticket_status.known %}
   <div class="summary-row">
@@ -124,7 +124,7 @@
 
 <div class="card">
   <div class="dashboard-links">
-    <a class="btn primary dashboard-link" href="{{ url_for('order_page') }}">🍱 お弁当を注文する</a>
+    <a class="btn primary dashboard-link" href="{{ url_for('order_page') }}" data-tour="order-btn">🍱 お弁当を注文する</a>
     <a class="btn dashboard-link" href="{{ url_for('my_orders') }}">📋 注文履歴・費用を見る</a>
   </div>
 </div>
@@ -135,6 +135,17 @@
   <div class="dashboard-links">
     {% if manual_url %}<a class="btn dashboard-link" href="{{ manual_url }}" target="_blank" rel="noopener">📖 使い方ガイドを見る</a>{% endif %}
     {% if manual_video_url %}<a class="btn dashboard-link" href="{{ manual_video_url }}" target="_blank" rel="noopener">🎬 使い方動画を見る</a>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if show_tour %}
+<div id="tour-tooltip" class="tour-tooltip" hidden>
+  <p id="tour-text" class="tour-text"></p>
+  <div class="tour-controls">
+    <span id="tour-step" class="tour-step"></span>
+    <button type="button" id="tour-skip" class="btn small">スキップ</button>
+    <button type="button" id="tour-next" class="btn small primary">次へ</button>
   </div>
 </div>
 {% endif %}
@@ -151,5 +162,64 @@
     });
   });
 })();
+
+{% if show_tour %}
+(function () {
+  var steps = [
+    { sel: '[data-tour="week"]', text: 'ここに今週の注文状況が表示されます。過去の日はチケット回収状況、これからの日はキャンセルボタンが出ます。' },
+    { sel: '[data-tour="next-week"]', text: '来週の注文状況と締切はここで確認できます。まだ注文していなければここでわかります。' },
+    { sel: '[data-tour="tickets"]', text: 'チケットの残り枚数と、最後にもらった日がここでわかります。下には今月の天引き予定額も表示されます。' },
+    { sel: '[data-tour="order-btn"]', text: 'ここから毎週の注文ができます。使い方に迷ったら、下のマニュアルもいつでも見られます。' },
+  ].filter(function (s) { return document.querySelector(s.sel); });
+
+  if (!steps.length) return;
+
+  var tooltip = document.getElementById('tour-tooltip');
+  var textEl = document.getElementById('tour-text');
+  var stepEl = document.getElementById('tour-step');
+  var nextBtn = document.getElementById('tour-next');
+  var skipBtn = document.getElementById('tour-skip');
+  var current = -1;
+  var highlighted = null;
+
+  function clearHighlight() {
+    if (highlighted) highlighted.classList.remove('tour-highlight');
+    highlighted = null;
+  }
+
+  function show(i) {
+    clearHighlight();
+    current = i;
+    var step = steps[i];
+    var el = document.querySelector(step.sel);
+    if (!el) { advance(); return; }
+    el.classList.add('tour-highlight');
+    highlighted = el;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    textEl.textContent = step.text;
+    stepEl.textContent = (i + 1) + ' / ' + steps.length;
+    nextBtn.textContent = (i === steps.length - 1) ? '完了' : '次へ';
+    tooltip.hidden = false;
+  }
+
+  function advance() {
+    if (current + 1 < steps.length) {
+      show(current + 1);
+    } else {
+      finish();
+    }
+  }
+
+  function finish() {
+    clearHighlight();
+    tooltip.hidden = true;
+    fetch('{{ url_for("tour_seen") }}', { method: 'POST', credentials: 'same-origin' }).catch(function () {});
+  }
+
+  nextBtn.addEventListener('click', advance);
+  skipBtn.addEventListener('click', finish);
+  show(0);
+})();
+{% endif %}
 </script>
 {% endblock %}
