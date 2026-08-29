@@ -162,11 +162,11 @@
 {% endif %}
 
 <div class="card">
-  <h1 style="margin-top:0;">アプリの共有・通知</h1>
+  <h1 style="margin-top:0;">アプリの共有</h1>
+  <p>次回の注文がしやすくなるので、ホーム画面に追加することをおすすめします。社内掲示板や食堂にあるQRコードから開いてもOKです。わからないときは松浦さんか陽介さんに聞いてください。</p>
   <div class="dashboard-links">
     <button type="button" class="btn dashboard-link" id="show-qr-btn">📱 他の人に教える</button>
     <button type="button" class="btn dashboard-link" id="install-app-btn" hidden>➕ ホーム画面に追加</button>
-    <button type="button" class="btn dashboard-link" id="enable-push-btn" hidden>🔔 通知を有効にする</button>
   </div>
 </div>
 
@@ -187,11 +187,17 @@
 <div id="ios-install-modal" class="confirm-modal-backdrop" hidden>
   <div class="confirm-modal">
     <p class="confirm-modal-warning">➕ ホーム画面に追加する方法</p>
+    <p class="confirm-modal-body">※ Safari(標準ブラウザ)で開いている場合の手順です。他のブラウザでは手順が異なることがあります。</p>
+    <p class="confirm-modal-body" style="display:flex; align-items:center; gap:10px;">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><rect x="4" y="12" width="16" height="8" rx="2"/></svg>
+      このアイコン(共有ボタン)を探してタップします
+    </p>
     <p class="confirm-modal-body">
-      1. 画面下(または上)の「共有」ボタン(四角から矢印が出ているアイコン)をタップ<br>
+      1. 画面下(または上)の共有ボタンをタップ<br>
       2. メニューから「ホーム画面に追加」を選ぶ<br>
       3. 右上の「追加」をタップ
     </p>
+    <p class="confirm-modal-body">わからない場合は、松浦さんか陽介さんに聞いてください。</p>
     <div class="confirm-modal-actions">
       <button type="button" class="btn primary" id="ios-install-close-btn">わかった</button>
     </div>
@@ -328,73 +334,6 @@
       deferredPrompt.userChoice.finally(function () { deferredPrompt = null; installBtn.hidden = true; });
     });
   }
-})();
-
-// ---- プッシュ通知を有効にする ----
-(function () {
-  var btn = document.getElementById('enable-push-btn');
-  if (!btn) return;
-  var vapidKey = {{ vapid_public_key|tojson }};
-
-  function urlBase64ToUint8Array(base64String) {
-    var padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    var raw = window.atob(base64);
-    var arr = new Uint8Array(raw.length);
-    for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
-    return arr;
-  }
-
-  function setState(text, disabled) {
-    btn.textContent = text;
-    btn.disabled = !!disabled;
-  }
-
-  var isStandalonePush = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  var isIOSPush = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-
-  if (isIOSPush && !isStandalonePush) {
-    // iOSはホーム画面に追加してそのアイコンから開いた場合のみ通知に対応しており
-    // (PushManager自体が存在しない)、Safariのタブで開いている間は押しても
-    // 何もできないのでボタンごと出さない。
-    return;
-  }
-  btn.hidden = false;
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    setState('🔔 このブラウザは通知に対応していません', true);
-    return;
-  }
-  if (Notification.permission === 'denied') {
-    setState('🔔 通知がブロックされています(ブラウザの設定から許可してください)', true);
-    return;
-  }
-
-  navigator.serviceWorker.ready.then(function (reg) {
-    reg.pushManager.getSubscription().then(function (sub) {
-      if (sub) setState('🔔 通知は有効です', true);
-    });
-  }).catch(function () {});
-
-  btn.addEventListener('click', function () {
-    setState('🔔 設定中…', true);
-    navigator.serviceWorker.ready.then(function (reg) {
-      return reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidKey),
-      });
-    }).then(function (sub) {
-      return fetch('{{ url_for("push_subscribe") }}', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sub.toJSON()),
-      });
-    }).then(function () {
-      setState('🔔 通知は有効です', true);
-    }).catch(function () {
-      setState('🔔 通知を有効にする', false);
-    });
-  });
 })();
 </script>
 {% endblock %}

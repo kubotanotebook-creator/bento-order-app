@@ -2,7 +2,6 @@ Flask>=3.0
 pdfplumber>=0.11
 gunicorn>=23.0
 qrcode[pil]>=7.4
-pywebpush>=2.0
 # Provides the IANA timezone database for zoneinfo (Asia/Tokyo). Required on
 # Windows and on slim Linux images that ship without the system tz database.
 tzdata>=2024.1
