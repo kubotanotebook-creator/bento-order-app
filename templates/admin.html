@@ -11,14 +11,7 @@
 {# Sticky so an unanswered cancel request stays on screen no matter how far
    down the admin scrolls or which tab they switch to. #}
 <div id="attention-bar" class="attention-bar" {% if not cancel_requests %}hidden{% endif %}>
-  <span class="attention-text">
-    未対応の希望(キャンセル・区分変更)が <strong id="attention-count">{{ cancel_requests|length }}</strong> 件あります
-    <span id="attention-detail">
-      {%- set overdue = cancel_requests|selectattr('is_overdue')|list|length -%}
-      {%- set todays = cancel_requests|selectattr('is_today')|list|length -%}
-      {%- if overdue %}(うち{{ overdue }}件は日付が過ぎています){% elif todays %}(うち{{ todays }}件は本日分){% endif -%}
-    </span>
-  </span>
+  <span class="attention-text">未対応の希望(キャンセル・区分変更)が <strong id="attention-count">{{ cancel_requests|length }}</strong> 件あります<span id="attention-detail">{%- set overdue = cancel_requests|selectattr('is_overdue')|list|length -%}{%- set todays = cancel_requests|selectattr('is_today')|list|length -%}{%- if overdue %} (うち{{ overdue }}件は日付が過ぎています){% elif todays %} (うち{{ todays }}件は本日分){% endif -%}</span></span>
   <a href="#cancel-requests" class="btn small primary">確認する</a>
 </div>
 
@@ -1010,8 +1003,8 @@
       if (countEl) countEl.textContent = data.count;
       if (detailEl) {
         detailEl.textContent = data.overdue
-          ? '(うち' + data.overdue + '件は日付が過ぎています)'
-          : (data.today ? '(うち' + data.today + '件は本日分)' : '');
+          ? ' (うち' + data.overdue + '件は日付が過ぎています)'
+          : (data.today ? ' (うち' + data.today + '件は本日分)' : '');
       }
     }
     document.title = data.count ? '(' + data.count + ') ' + baseTitle : baseTitle;
