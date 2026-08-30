@@ -1,0 +1,16 @@
+{
+  "name": "まつうランチ(管理者)",
+  "short_name": "まつう管理",
+  "description": "まつうランチ 管理者用画面",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1971c2",
+  "lang": "ja",
+  "icons": [
+    { "src": "/static/icons/icon-192-admin.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-512-admin.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-maskable-512-admin.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

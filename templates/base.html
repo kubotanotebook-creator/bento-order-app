@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}まつうランチ{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-<meta name="theme-color" content="#d9480f">
-<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<link rel="manifest" href="{{ url_for('static', filename='manifest-admin.json' if is_admin_area else 'manifest.json') }}">
+<meta name="theme-color" content="{{ '#1971c2' if is_admin_area else '#d9480f' }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon-admin.png' if is_admin_area else 'icons/apple-touch-icon.png') }}">
 </head>
 <body>
-<header class="topbar">
+<header class="topbar{{ ' topbar-admin' if is_admin_area else '' }}">
   <div class="topbar-inner">
-    <a class="brand" href="{{ url_for('index') }}">🍱 まつうランチ</a>
+    <a class="brand" href="{{ url_for('index') }}">🍱 まつうランチ{% if is_admin_area %}<span class="admin-badge">管理者</span>{% endif %}</a>
     <div class="topbar-actions">
       <nav>
         {% block nav %}{% endblock %}

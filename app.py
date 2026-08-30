@@ -132,6 +132,14 @@ def inject_announcement():
     }
 
 
+@app.context_processor
+def inject_admin_area_flag():
+    """base.html uses this to swap the manifest/icon/theme-color and show an
+    admin badge, so the admin screen (and its home-screen icon, if someone
+    adds /admin separately) is visually distinct from the employee one."""
+    return {"is_admin_area": request.path.startswith("/admin")}
+
+
 # ---------- DB helpers ----------
 
 def get_db():

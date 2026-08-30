@@ -9,6 +9,21 @@ body {
   background: #ffffff;
   border-bottom: 1px solid #e2e4e8;
 }
+.topbar-admin {
+  background: #eaf3fb;
+  border-bottom: 1px solid #1971c2;
+}
+.admin-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  background: #1971c2;
+  border-radius: 999px;
+  vertical-align: middle;
+}
 /* 未対応のキャンセル希望を知らせる帯。画面上部に貼り付いて、
    どこまでスクロールしても視界から外れないようにする。 */
 .attention-bar {
