@@ -147,6 +147,27 @@
   {% else %}
   <p class="muted" style="margin-bottom:0;">この期間の受け渡し記録はまだありません(参考: この期間の注文数 {{ cycle_summary.order_count }}件)。</p>
   {% endif %}
+
+  {% if past_cycle_summaries %}
+  <button type="button" class="date-toggle-btn" data-target="past-cycles-body" style="margin-top:10px; margin-bottom:0;">
+    <span class="chevron">▶</span> 前月以前の天引きを見る
+  </button>
+  <div class="date-group-body" id="past-cycles-body" hidden>
+    {% for pc in past_cycle_summaries %}
+    <div style="padding:10px 0; {% if not loop.last %}border-bottom:1px solid #eee;{% endif %}">
+      <div class="summary-row">
+        <div class="stat"><span class="stat-label">{{ pc.label }}</span></div>
+        <div class="stat"><span class="stat-label">受け渡し</span><span class="stat-value">{{ pc.booklets }}冊</span></div>
+        <div class="stat"><span class="stat-label">天引き予定額</span><span class="stat-value">¥{{ pc.total }}</span></div>
+        <div class="stat"><span class="stat-label">天引き日</span><span class="stat-value">{{ pc.deduction_date_label }}</span></div>
+      </div>
+      {% if pc.issuance_dates %}
+      <p class="muted" style="margin:4px 0 0;">受け渡し日: {% for d in pc.issuance_dates %}{{ d }}({{ d|weekday_jp }}){% if not loop.last %}、{% endif %}{% endfor %}</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -171,10 +192,9 @@
 
 <div class="card">
   <h1 style="margin-top:0;">アプリの共有</h1>
-  <p>次回の注文がしやすくなるので、ホーム画面に追加することをおすすめします。社内掲示板や食堂にあるQRコードから開いてもOKです。わからないときは松浦さんか陽介さんに聞いてください。</p>
+  <p>社内掲示板や食堂にあるQRコードから開けます。新しく入った方には「他の人に教える」からQRコードを見せてあげてください。</p>
   <div class="dashboard-links">
-    <button type="button" class="btn dashboard-link" id="show-qr-btn">📱 他の人に教える</button>
-    <button type="button" class="btn dashboard-link" id="install-app-btn" hidden>➕ ホーム画面に追加</button>
+    <button type="button" class="btn dashboard-link" id="show-qr-btn">📱 他の人に教える(URL・QRコード表示)</button>
   </div>
 </div>
 
@@ -188,26 +208,6 @@
     <div class="confirm-modal-actions">
       <button type="button" class="btn" id="qr-close-btn">閉じる</button>
       <button type="button" class="btn primary" id="qr-copy-btn">URLをコピー</button>
-    </div>
-  </div>
-</div>
-
-<div id="ios-install-modal" class="confirm-modal-backdrop" hidden>
-  <div class="confirm-modal">
-    <p class="confirm-modal-warning">➕ ホーム画面に追加する方法</p>
-    <p class="confirm-modal-body">※ Safari(標準ブラウザ)で開いている場合の手順です。他のブラウザでは手順が異なることがあります。</p>
-    <p class="confirm-modal-body" style="display:flex; align-items:center; gap:10px;">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><rect x="4" y="12" width="16" height="8" rx="2"/></svg>
-      このアイコン(共有ボタン)を探してタップします
-    </p>
-    <p class="confirm-modal-body">
-      1. 画面下(または上)の共有ボタンをタップ<br>
-      2. メニューから「ホーム画面に追加」を選ぶ<br>
-      3. 右上の「追加」をタップ
-    </p>
-    <p class="confirm-modal-body">わからない場合は、松浦さんか陽介さんに聞いてください。</p>
-    <div class="confirm-modal-actions">
-      <button type="button" class="btn primary" id="ios-install-close-btn">わかった</button>
     </div>
   </div>
 </div>
@@ -311,37 +311,6 @@
       setTimeout(function () { copyBtn.textContent = 'URLをコピー'; }, 2000);
     }).catch(function () {});
   });
-})();
-
-// ---- ホーム画面に追加 ----
-(function () {
-  var installBtn = document.getElementById('install-app-btn');
-  var iosModal = document.getElementById('ios-install-modal');
-  var iosCloseBtn = document.getElementById('ios-install-close-btn');
-  if (!installBtn) return;
-  var deferredPrompt = null;
-  var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  var isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-
-  if (isStandalone) {
-    // Already installed — nothing to offer.
-  } else if (isIOS) {
-    installBtn.hidden = false;
-    installBtn.addEventListener('click', function () { iosModal.hidden = false; });
-    iosCloseBtn.addEventListener('click', function () { iosModal.hidden = true; });
-    iosModal.addEventListener('click', function (e) { if (e.target === iosModal) iosModal.hidden = true; });
-  } else {
-    window.addEventListener('beforeinstallprompt', function (e) {
-      e.preventDefault();
-      deferredPrompt = e;
-      installBtn.hidden = false;
-    });
-    installBtn.addEventListener('click', function () {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.finally(function () { deferredPrompt = null; installBtn.hidden = true; });
-    });
-  }
 })();
 </script>
 {% endblock %}

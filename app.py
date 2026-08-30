@@ -116,6 +116,22 @@ def weekday_jp_filter(date_str):
     return WEEKDAY_JP[date.fromisoformat(date_str).weekday()]
 
 
+@app.context_processor
+def inject_announcement():
+    """The one admin-authored announcement is shown as a dismissible banner
+    in base.html on every page (employee and admin alike) — injected here
+    instead of threaded through every render_template call. Cheap enough
+    (one row already cached per-request via get_db) to just always fetch."""
+    try:
+        settings = get_settings()
+    except sqlite3.OperationalError:
+        return {}  # e.g. hit before init_db() has run migrations
+    return {
+        "announcement_text": settings["announcement_text"],
+        "announcement_updated_at": settings["announcement_updated_at"],
+    }
+
+
 # ---------- DB helpers ----------
 
 def get_db():
@@ -325,6 +341,17 @@ def init_db():
     # Manual videos (YouTube etc.) — admin-editable from the settings tab,
     # same reasoning as the PDF upload: no code deploy needed to swap links.
     for col in ("employee_manual_video_url", "admin_manual_video_url"):
+        try:
+            db.execute(f"ALTER TABLE settings ADD COLUMN {col} TEXT")
+            db.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+    # A single admin-authored announcement, shown as a dismissible banner on
+    # every page (see inject_announcement/base.html) — the first piece of a
+    # broadcast notice area, ahead of the per-employee notices (e.g. "your
+    # ticket wasn't loaded") planned later.
+    for col in ("announcement_text", "announcement_updated_at"):
         try:
             db.execute(f"ALTER TABLE settings ADD COLUMN {col} TEXT")
             db.commit()
@@ -975,6 +1002,44 @@ def index():
         "deduction_date_label": f"{deduction_date.month}/{deduction_date.day}",
     }
 
+    # Past cycles, collapsed by default on the dashboard — someone checking
+    # "did last month's deduction look right" shouldn't have to leave the
+    # dashboard for the full 注文履歴 page just to see a handout total.
+    past_cycle_keys = sorted(
+        {
+            payroll_cycle(date.fromisoformat(r["issued_at"]))
+            for r in db.execute(
+                "SELECT issued_at FROM ticket_issuances WHERE employee_name = ? "
+                "AND issued_at < ? AND kind = 'issue'",
+                (employee_name, cycle_start.isoformat()),
+            ).fetchall()
+        },
+        reverse=True,
+    )
+    past_cycle_summaries = []
+    for p_start, p_end in past_cycle_keys:
+        p_booklets = db.execute(
+            "SELECT COUNT(*) as c FROM ticket_issuances WHERE employee_name = ? "
+            "AND issued_at >= ? AND issued_at <= ? AND kind = 'issue'",
+            (employee_name, p_start.isoformat(), p_end.isoformat()),
+        ).fetchone()["c"]
+        p_issuance_dates = [
+            r["issued_at"]
+            for r in db.execute(
+                "SELECT issued_at FROM ticket_issuances WHERE employee_name = ? "
+                "AND issued_at >= ? AND issued_at <= ? AND kind = 'issue' ORDER BY issued_at",
+                (employee_name, p_start.isoformat(), p_end.isoformat()),
+            ).fetchall()
+        ]
+        p_deduction_date = payroll_deduction_date(p_end)
+        past_cycle_summaries.append({
+            "label": f"{p_start.month}/{p_start.day}〜{p_end.month}/{p_end.day}",
+            "booklets": p_booklets,
+            "total": p_booklets * price_per_booklet,
+            "issuance_dates": p_issuance_dates,
+            "deduction_date_label": f"{p_deduction_date.month}/{p_deduction_date.day}",
+        })
+
     return render_template(
         "dashboard.html",
         employee_name=employee_name,
@@ -984,6 +1049,7 @@ def index():
         next_week_days=next_week_days,
         ticket_status=ticket_status,
         cycle_summary=cycle_summary,
+        past_cycle_summaries=past_cycle_summaries,
         recent_orders=recent_orders,
         category_labels=CATEGORY_LABELS,
         today=today.isoformat(),
@@ -2241,6 +2307,24 @@ def admin_manual_video():
     db.commit()
     label = "社員向け" if kind == "employee" else "管理者向け"
     flash(f"{label}マニュアルの動画リンクを更新しました。" if video_url else f"{label}マニュアルの動画リンクを削除しました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/announcement", methods=["POST"])
+def admin_announcement():
+    """Sets/clears the one current announcement, shown as a dismissible
+    banner at the top of every page (see inject_announcement/base.html) —
+    reaches everyone regardless of device/browser, unlike push."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    text = request.form.get("text", "").strip() or None
+    db = get_db()
+    db.execute(
+        "UPDATE settings SET announcement_text = ?, announcement_updated_at = ? WHERE id = 1",
+        (text, now_jst().isoformat() if text else None),
+    )
+    db.commit()
+    flash("お知らせを更新しました。" if text else "お知らせを削除しました。", "success")
     return redirect(url_for("admin_dashboard"))
 
 

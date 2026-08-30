@@ -671,6 +671,34 @@
   </div>
 
   <div class="card">
+    <h1>お知らせ(全員に上部バナー表示)</h1>
+    <p class="muted">
+      社員が画面を開くと、一番上に帯で表示される1件だけのお知らせです。
+      本人が「×」で閉じるまで(閉じても、内容を更新すればまた表示されます)残ります。
+      メニューの急な変更・お休みの連絡などに使ってください。
+    </p>
+    {% if announcement_text %}
+      <p class="muted"><span class="badge open">配信中</span> 更新日時: {{ announcement_updated_at }}</p>
+    {% else %}
+      <p class="muted"><span class="badge closed">なし</span></p>
+    {% endif %}
+    <form method="post" action="{{ url_for('admin_announcement') }}">
+      <textarea name="text" rows="3" style="width:100%;" placeholder="例: 本日は食材の都合でフライありメニューを一部変更しています。">{{ announcement_text or '' }}</textarea>
+      <div class="inline-form" style="margin-top:8px;">
+        <button type="submit" class="btn small primary">この内容で配信する</button>
+        {% if announcement_text %}
+        <button type="submit" form="announcement-clear-form" class="btn small">削除する</button>
+        {% endif %}
+      </div>
+    </form>
+    {% if announcement_text %}
+    <form id="announcement-clear-form" method="post" action="{{ url_for('admin_announcement') }}" style="display:none;">
+      <input type="hidden" name="text" value="">
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card">
     <h1>使い方マニュアル(PDF)</h1>
     <p class="muted">ここでアップロードしたPDFが、社員のダッシュボードや管理画面上部の「マニュアル」リンクからそのまま見られます(Googleドライブのリンク管理は不要です)。</p>
     {% for kind, label in [("employee", "社員向け"), ("admin", "管理者向け")] %}

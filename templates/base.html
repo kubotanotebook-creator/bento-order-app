@@ -19,6 +19,23 @@
   </div>
 </header>
 <main class="container">
+  {% if announcement_text %}
+  <div id="announcement-bar" class="attention-bar announcement-bar" data-key="{{ announcement_updated_at }}" hidden>
+    <span class="attention-text">📢 {{ announcement_text }}</span>
+    <button type="button" class="announcement-bar-close" aria-label="お知らせを閉じる">×</button>
+  </div>
+  <script>
+  (function () {
+    var bar = document.getElementById('announcement-bar');
+    var key = 'dismissedAnnouncement:' + bar.dataset.key;
+    if (localStorage.getItem(key) !== '1') bar.hidden = false;
+    bar.querySelector('.announcement-bar-close').addEventListener('click', function () {
+      localStorage.setItem(key, '1');
+      bar.hidden = true;
+    });
+  })();
+  </script>
+  {% endif %}
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}

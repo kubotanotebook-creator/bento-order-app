@@ -29,7 +29,13 @@ body {
   font-weight: 600;
 }
 .attention-bar[hidden] { display: none; }
-.attention-text { line-height: 1.5; }
+.attention-text { line-height: 1.5; white-space: pre-wrap; }
+.announcement-bar { background: #1971c2; border-color: #145591; color: #fff; }
+.announcement-bar-close {
+  border: none; background: transparent; color: #fff; font-size: 1.3rem; line-height: 1;
+  cursor: pointer; padding: 0 4px; opacity: 0.85;
+}
+.announcement-bar-close:hover { opacity: 1; }
 .row-overdue { background: #fff5f5; }
 .topbar-inner {
   max-width: 900px;
