@@ -22,6 +22,10 @@
   {% endif %}
 {% endfor %}
 
+{% for n in personal_notices %}
+  <div class="flash flash-warning">📌 {{ n.text }}</div>
+{% endfor %}
+
 <div class="card">
   <a class="btn primary dashboard-link" href="{{ url_for('order_page') }}" data-tour="order-btn" style="display:block; text-align:center; font-size:1.1rem;">🍱 お弁当を注文する</a>
 </div>

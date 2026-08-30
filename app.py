@@ -319,6 +319,19 @@ def init_db():
             new_category TEXT,
             created_at TEXT NOT NULL
         );
+
+        -- Ad-hoc notices from an admin to one specific employee (e.g. "your
+        -- ticket handout wasn't recorded"). Stays visible to both sides —
+        -- on the employee's dashboard and in the admin's pending list —
+        -- until an admin marks it resolved, so it can't quietly disappear
+        -- after being shown once without anyone confirming it was handled.
+        CREATE TABLE IF NOT EXISTS personal_notices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_name TEXT NOT NULL,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            resolved_at TEXT
+        );
         """
     )
     db.commit()
@@ -328,6 +341,12 @@ def init_db():
     # on-dashboard resolution banner, which needs no permissions at all.
     db.execute("DROP TABLE IF EXISTS push_subscriptions")
     db.commit()
+
+    try:
+        db.execute("ALTER TABLE personal_notices ADD COLUMN resolved_at TEXT")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
 
     # Marks whether this person has clicked through the first-login dashboard
     # tour. NULL = not yet — most people won't read a written manual, so a
@@ -562,6 +581,23 @@ def consume_resolution_notices(db, employee_name):
     )
     db.commit()
     return notices
+
+
+def get_open_personal_notices(db, employee_name):
+    """Admin-authored notices addressed to one employee (e.g. "your ticket
+    handout wasn't recorded") — unlike the automatic resolution notices,
+    these stay visible on every dashboard visit for both the employee and
+    the admin until an admin explicitly marks it 対応済み, since a one-shot
+    "shown once then gone" risks it being missed with no record either side
+    can point back to."""
+    return [
+        dict(r)
+        for r in db.execute(
+            "SELECT id, text FROM personal_notices "
+            "WHERE employee_name = ? AND resolved_at IS NULL ORDER BY id",
+            (employee_name,),
+        ).fetchall()
+    ]
 
 
 def log_order_change(db, order_date, old_category, new_category):
@@ -914,6 +950,7 @@ def index():
 
     # Approve/reject outcomes since their last visit — read once, then gone.
     resolution_notices = consume_resolution_notices(db, employee_name)
+    personal_notices = get_open_personal_notices(db, employee_name)
 
     # This week's full Mon-Fri picture, INCLUDING already-passed days —
     # deliberately not reusing menu_by_date/_load_employee_menu_context
@@ -1057,6 +1094,7 @@ def index():
         manual_video_url=settings["employee_manual_video_url"],
         show_tour=show_tour,
         resolution_notices=resolution_notices,
+        personal_notices=personal_notices,
     )
 
 
@@ -1998,8 +2036,18 @@ def admin_dashboard():
             })
         proxy_weeks.append({"monday": monday.isoformat(), "label": build_week_label(monday), "days": days})
 
+    # Personal notices still open (not yet marked resolved) — stays here
+    # so an admin can track what's outstanding, not just what hasn't been
+    # displayed yet.
+    pending_personal_notices = [
+        dict(r) for r in db.execute(
+            "SELECT * FROM personal_notices WHERE resolved_at IS NULL ORDER BY created_at DESC"
+        ).fetchall()
+    ]
+
     return render_template(
         "admin.html",
+        pending_personal_notices=pending_personal_notices,
         menu_by_date=menu_by_date,
         upcoming_closed_days=upcoming_closed_days,
         mail_configured=notify.is_configured(),
@@ -2325,6 +2373,57 @@ def admin_announcement():
     )
     db.commit()
     flash("お知らせを更新しました。" if text else "お知らせを削除しました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/personal-notice/add", methods=["POST"])
+def admin_personal_notice_add():
+    """Queues a one-shot notice for a single employee (e.g. "your ticket
+    handout wasn't recorded yet") — shown once on their next dashboard
+    visit, same mechanism as the automatic approve/reject notices."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    name = resolve_employee_name(db, request.form.get("employee_name", ""))
+    text = request.form.get("text", "").strip()
+    if not name or not text:
+        flash("氏名と内容を入力してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+    db.execute(
+        "INSERT INTO personal_notices (employee_name, text, created_at) VALUES (?, ?, ?)",
+        (name, text, now_jst().isoformat()),
+    )
+    db.commit()
+    flash(f"{name} さん宛にお知らせを送信しました(次回ダッシュボードを開いたときに表示されます)。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/personal-notice/delete", methods=["POST"])
+def admin_personal_notice_delete():
+    """Cancels a personal notice outright (typo, sent to the wrong person)
+    rather than resolving it — removes it without leaving any record."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute("DELETE FROM personal_notices WHERE id = ?", (request.form.get("notice_id"),))
+    db.commit()
+    flash("お知らせを取り消しました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/personal-notice/resolve", methods=["POST"])
+def admin_personal_notice_resolve():
+    """Marks a personal notice as handled — it disappears from both the
+    employee's dashboard and this pending list once resolved."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute(
+        "UPDATE personal_notices SET resolved_at = ? WHERE id = ?",
+        (now_jst().isoformat(), request.form.get("notice_id")),
+    )
+    db.commit()
+    flash("対応済みにしました。", "success")
     return redirect(url_for("admin_dashboard"))
 
 

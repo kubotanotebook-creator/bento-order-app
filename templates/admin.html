@@ -699,6 +699,54 @@
   </div>
 
   <div class="card">
+    <h1>個人宛のお知らせ</h1>
+    <p class="muted">
+      特定の1人だけに向けたお知らせです。その人のダッシュボードに表示され続け、下の一覧から「対応済みにする」を押すまで消えません。
+      「チケットの受け渡しが記録されていません」のような、個別の連絡に使ってください。
+    </p>
+    <form method="post" action="{{ url_for('admin_personal_notice_add') }}" class="grid-form">
+      <label>宛先(氏名)
+        <input type="text" name="employee_name" list="personal-notice-employee-list" placeholder="例: 山田 太郎" required>
+        <datalist id="personal-notice-employee-list">
+          {% for name in known_employees %}<option value="{{ name }}">{% endfor %}
+        </datalist>
+      </label>
+      <label>内容
+        <textarea name="text" rows="2" style="width:100%;" placeholder="例: チケットの受け渡しが記録されていないようです。心当たりがあれば確認してください。" required></textarea>
+      </label>
+      <button type="submit" class="btn small primary">この内容で送信する</button>
+    </form>
+
+    {% if pending_personal_notices %}
+    <h3 style="margin-top:16px;">対応待ちのお知らせ</h3>
+    <p class="muted">対応済みにするまで、本人のダッシュボードにも表示され続けます。</p>
+    <div class="table-scroll">
+    <table class="table">
+      <thead><tr><th>宛先</th><th>内容</th><th></th></tr></thead>
+      <tbody>
+        {% for n in pending_personal_notices %}
+        <tr>
+          <td data-label="宛先">{{ n.employee_name }}</td>
+          <td data-label="内容">{{ n.text }}</td>
+          <td data-label="">
+            <form method="post" action="{{ url_for('admin_personal_notice_resolve') }}" class="inline-form">
+              <input type="hidden" name="notice_id" value="{{ n.id }}">
+              <button type="submit" class="btn small primary">対応済みにする</button>
+            </form>
+            <form method="post" action="{{ url_for('admin_personal_notice_delete') }}" class="inline-form" onsubmit="return confirm('このお知らせを取り消しますか?');">
+              <input type="hidden" name="notice_id" value="{{ n.id }}">
+              <button type="submit" class="btn small">取り消す</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
     <h1>使い方マニュアル(PDF)</h1>
     <p class="muted">ここでアップロードしたPDFが、社員のダッシュボードや管理画面上部の「マニュアル」リンクからそのまま見られます(Googleドライブのリンク管理は不要です)。</p>
     {% for kind, label in [("employee", "社員向け"), ("admin", "管理者向け")] %}
