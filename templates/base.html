@@ -13,9 +13,12 @@
 <header class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="{{ url_for('index') }}">🍱 まつうランチ</a>
-    <nav>
-      {% block nav %}{% endblock %}
-    </nav>
+    <div class="topbar-actions">
+      <nav>
+        {% block nav %}{% endblock %}
+      </nav>
+      <button type="button" class="reload-btn" onclick="location.reload()" title="最新の状態に更新" aria-label="最新の状態に更新">🔄</button>
+    </div>
   </div>
 </header>
 <main class="container">

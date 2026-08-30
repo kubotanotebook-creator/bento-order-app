@@ -48,6 +48,23 @@ body {
   gap: 8px;
 }
 .brand { font-weight: 700; font-size: 1.1rem; color: #d9480f; text-decoration: none; }
+.topbar-actions { display: flex; align-items: center; gap: 12px; }
+.reload-btn {
+  border: 1px solid #e2e4e8;
+  background: #fff;
+  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.reload-btn:hover { background: #f3f3f3; }
+.reload-btn:active { transform: scale(0.95); }
 nav { display: flex; gap: 14px; align-items: center; font-size: 0.9rem; }
 nav a { color: #444; text-decoration: none; }
 nav a:hover { text-decoration: underline; }
