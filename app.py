@@ -784,34 +784,46 @@ def payroll_deduction_date(cycle_end):
 
 def employee_ticket_status(db, employee_name, today):
     """Ticket status from the logged 受け渡し記録 (admin_issue_tickets): the
-    last booklet handed out, minus bento actually picked up since that
-    handout (order_date <= today, so not-yet-happened future orders aren't
-    counted as used yet).
+    last booklet handed out, minus the tickets the admin has actually
+    confirmed collecting since that handout (paid = 1).
 
-    The handout date itself is EXCLUDED from "used" (order_date strictly
-    after issued_at): a new booklet is only ever given after the old one
-    ran out, so if there's already an order on the handout date, that
-    order was fulfilled with the old booklet, not the fresh one — counting
-    it here would make a brand-new booklet show as already down a ticket."""
+    Counted on collection, not on the day passing: a ticket only really
+    leaves someone's hand when 松浦さん/陽介さん takes it in exchange for the
+    bento, so ticking チケット回収確認 is what should move the number. Someone
+    who ordered but was away that day still has their ticket.
+
+    The handout date itself is EXCLUDED (order_date strictly after
+    issued_at): a new booklet is only ever given once the old one ran out,
+    so an order on the handout date was paid for with the old booklet.
+
+    `pending` is meals already eaten whose ticket hasn't been ticked off yet
+    — shown to the employee so an unrecorded collection doesn't look like
+    the count is simply wrong."""
     last_issuance = db.execute(
         "SELECT * FROM ticket_issuances WHERE employee_name = ? ORDER BY issued_at DESC, id DESC LIMIT 1",
         (employee_name,),
     ).fetchone()
     if not last_issuance:
         return {"known": False}
-    used_since_issuance = db.execute(
+    collected = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
-        "AND order_date > ? AND order_date <= ?",
+        "AND order_date > ? AND paid = 1",
+        (employee_name, last_issuance["issued_at"]),
+    ).fetchone()["c"]
+    pending = db.execute(
+        "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
+        "AND order_date > ? AND order_date <= ? AND paid = 0",
         (employee_name, last_issuance["issued_at"], today.isoformat()),
     ).fetchone()["c"]
     return {
         "known": True,
-        "remaining": max(0, last_issuance["quantity"] - used_since_issuance),
+        "remaining": max(0, last_issuance["quantity"] - collected),
         # Always the booklet size (10), not last_issuance["quantity"] — for a
         # kind='opening' row that quantity is the go-live remaining count
         # (e.g. 3), not a full booklet, so showing it as the denominator would
         # display "3/3" instead of the intended "3/10".
         "total": 10,
+        "pending": pending,
         "issued_at": last_issuance["issued_at"],
     }
 

@@ -133,6 +133,10 @@
     <div class="stat"><span class="stat-label">残り</span><span class="stat-value">{{ ticket_status.remaining }}/{{ ticket_status.total }}枚</span></div>
   </div>
   <p class="muted" style="margin-bottom:0;">最後にもらった日: {{ ticket_status.issued_at }}</p>
+  <p class="muted" style="margin-bottom:0;">松浦さん・陽介さんがチケットを回収したぶんだけ減ります。</p>
+  {% if ticket_status.pending %}
+  <p class="notice" style="margin-top:8px; margin-bottom:0;">お弁当を受け取った{{ ticket_status.pending }}食分が、まだチケット回収の記録待ちです。記録されると残り枚数に反映されます。</p>
+  {% endif %}
   {% else %}
   <p class="muted" style="margin-bottom:0;">受け渡し記録がまだありません。松浦さんか陽介さんに確認してください。</p>
   {% endif %}
