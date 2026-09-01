@@ -1,9 +1,14 @@
 {% extends "base.html" %}
 {% block title %}お名前の入力{% endblock %}
 {% block content %}
-{% if manual_url %}
+{% if manual_video_url or manual_url %}
 <div class="card narrow" style="background:#fff7f0; border-color:#f0dcc8;">
-  <p style="margin:0;">🔰 <strong>初めての方はまずこちらをご覧ください</strong> — <a href="{{ manual_url }}" target="_blank" rel="noopener">使い方ガイドを見る</a></p>
+  <p style="margin:0 0 10px;">🔰 <strong>初めての方はまずこちらをご覧ください</strong></p>
+  {% if manual_video_url %}
+  <a class="btn dashboard-link" href="{{ manual_video_url }}" target="_blank" rel="noopener">🎬 使い方動画を見る</a>
+  {% else %}
+  <a class="btn dashboard-link" href="{{ manual_url }}" target="_blank" rel="noopener">📖 使い方ガイドを見る</a>
+  {% endif %}
 </div>
 {% endif %}
 <div class="card narrow">

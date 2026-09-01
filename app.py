@@ -975,6 +975,7 @@ def index():
             "login.html",
             known_employees=known_employees,
             manual_url=manual_url("employee", EMPLOYEE_MANUAL_URL_FALLBACK),
+            manual_video_url=get_settings()["employee_manual_video_url"],
         )
 
     db = get_db()
