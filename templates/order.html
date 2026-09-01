@@ -64,6 +64,12 @@
   {% if week.open %}
   <form method="post" action="{{ url_for('order_week') }}">
     <input type="hidden" name="week_monday" value="{{ week.monday }}">
+    <div class="bulk-select-row">
+      <span class="muted bulk-select-label">まとめて選ぶ:</span>
+      {% for code in category_codes %}
+      <button type="button" class="btn small bulk-select-btn {{ code }}" data-category="{{ code }}" data-label="{{ category_labels[code] }}">全部{{ category_labels[code] }}にする</button>
+      {% endfor %}
+    </div>
     {% for day in week.days %}
     <div class="day-row{% if day.closed_reason %} is-closed-day{% endif %}">
       <div class="day-title">{{ day.date }}({{ day.weekday }})</div>
@@ -170,4 +176,21 @@
   {% endif %}
 </div>
 {% endfor %}
+<script>
+(function () {
+  document.querySelectorAll('.bulk-select-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var category = btn.dataset.category;
+      var label = btn.dataset.label;
+      if (!confirm('この週の「' + label + '」が選べる日をすべて「' + label + '」にして、今すぐ保存します。よろしいですか?')) return;
+      alert('休みの日にはご自身で必ず「注文しない」を選んで、更新してください!');
+      var form = btn.closest('form');
+      form.querySelectorAll('input[type=radio][value="' + category + '"]').forEach(function (r) {
+        r.checked = true;
+      });
+      form.submit();
+    });
+  });
+})();
+</script>
 {% endblock %}

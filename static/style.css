@@ -300,6 +300,23 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .day-choices label.veg:has(input:checked) { background: #eaf7ed; border-color: #2f9e44; color: #2f9e44; font-weight: 700; }
 .day-choices label.none:has(input:checked) { background: #f2f2f2; border-color: #999; color: #666; font-weight: 700; }
 
+/* One-click "set this whole week to one category" — for people who order
+   the same thing every day, so they don't have to tap each day one by one. */
+.bulk-select-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed #ddd;
+}
+.bulk-select-label { font-size: 0.8rem; }
+.bulk-select-btn { border: 1px solid #ccc; background: #fff; }
+.bulk-select-btn.fry { color: #d9480f; border-color: #f0c4a8; }
+.bulk-select-btn.nofry { color: #7048e8; border-color: #cdbdf7; }
+.bulk-select-btn.veg { color: #2f9e44; border-color: #b9e2c1; }
+
 /* Weekly at-a-glance strip — mimics the paper board's "one row of circles
    per week" so employees can see their whole week's choices in one look. */
 .week-glance {

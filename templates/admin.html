@@ -803,11 +803,14 @@
   <div class="card">
     <h1>弁当チェック表印刷</h1>
     <p class="muted">お弁当受け取り時に紙にレ点をつけるための一覧です。区分ごとの食数・メニュー名も載っているので、りりてーへのFAX連絡はこの印刷画面を見て行ってください。週1枚まとめて印刷しておき、締切後の当日追加分はその紙に手書きで追記する運用がおすすめです。</p>
-    <p>
-      <a href="{{ url_for('admin_print_checklist_week') }}" target="_blank" class="btn primary">今週分をまとめてA4で印刷(1枚)</a>
-    </p>
+    <div class="dashboard-links" style="margin-bottom:14px;">
+      <a href="{{ url_for('admin_print_checklist_week') }}" target="_blank" class="btn primary dashboard-link">今週分を印刷</a>
+      <a href="{{ url_for('admin_print_checklist_week', monday=next_week_monday) }}" target="_blank" class="btn primary dashboard-link">来週分を印刷</a>
+      <a href="{{ url_for('admin_print_checklist', date=today) }}" target="_blank" class="btn dashboard-link">本日分を印刷</a>
+    </div>
+    <p class="muted" style="margin-bottom:14px;">「来週分」は、りりてーへのFAX連絡と来週の受け取りチェック表を兼ねています。</p>
     <form method="get" action="{{ url_for('admin_print_checklist_week') }}" target="_blank" class="inline-form">
-      <label style="margin-bottom:0;">週を指定して印刷(過去・未来もOK)
+      <label style="margin-bottom:0;">週を指定して印刷(過去の週もOK)
         <input type="date" name="monday" value="{{ check_date }}">
       </label>
       <button type="submit" class="btn small">その週の分を印刷</button>

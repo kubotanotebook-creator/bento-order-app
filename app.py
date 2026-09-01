@@ -1898,6 +1898,7 @@ def admin_dashboard():
     settings = get_settings()
     today = today_jst()
     today_str = today.isoformat()
+    next_week_monday_str = (week_monday(today) + timedelta(days=7)).isoformat()
 
     menu_rows = db.execute(
         "SELECT * FROM menu_items WHERE item_date >= ? ORDER BY item_date, category",
@@ -2114,6 +2115,7 @@ def admin_dashboard():
         is_check_date_today=(check_date_str == today_str),
         settings=settings,
         today=today_str,
+        next_week_monday=next_week_monday_str,
         category_codes=CATEGORY_CODES,
         category_labels=CATEGORY_LABELS,
         category_short=CATEGORY_SHORT,
