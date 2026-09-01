@@ -1953,28 +1953,6 @@ def admin_dashboard():
         month["date_groups"] = [{"date": d, "day_orders": orders_by_date[d]} for d in month["dates"]]
         month["count"] = sum(o["quantity"] for d in month["dates"] for o in orders_by_date[d])
 
-    summary = {}
-    for o in orders:
-        d = o["order_date"]
-        s = summary.setdefault(d, {"count": 0, "item_counts": {}, "item_names": {}, "cat_counts": {}})
-        s["count"] += o["quantity"]
-        s["item_counts"][o["item_display"]] = s["item_counts"].get(o["item_display"], 0) + o["quantity"]
-        s["item_names"].setdefault(o["item_display"], []).append(o["employee_name"])
-        s["cat_counts"][o["category"]] = s["cat_counts"].get(o["category"], 0) + o["quantity"]
-
-    summary_today_key, summary_future_dates, summary_past_dates = split_dates_today_future_past(summary.keys(), today)
-    today_summary = summary.get(summary_today_key) if summary_today_key else None
-
-    summary_future_weeks = group_dates_by_week(summary_future_dates)
-    for week in summary_future_weeks:
-        week["date_groups"] = [{"date": d, "s": summary[d]} for d in week["dates"]]
-        week["count"] = sum(summary[d]["count"] for d in week["dates"])
-
-    summary_past_months = group_dates_by_month(summary_past_dates)
-    for month in summary_past_months:
-        month["date_groups"] = [{"date": d, "s": summary[d]} for d in month["dates"]]
-        month["count"] = sum(summary[d]["count"] for d in month["dates"])
-
     known_employees = [
         r["employee_name"]
         for r in db.execute("SELECT DISTINCT employee_name FROM orders ORDER BY employee_name").fetchall()
@@ -2127,9 +2105,6 @@ def admin_dashboard():
         check_date=check_date_str,
         check_date_weekday=check_date_weekday,
         is_check_date_today=(check_date_str == today_str),
-        today_summary=today_summary,
-        summary_future_weeks=summary_future_weeks,
-        summary_past_months=summary_past_months,
         settings=settings,
         today=today_str,
         category_codes=CATEGORY_CODES,

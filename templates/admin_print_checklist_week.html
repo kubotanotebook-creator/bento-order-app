@@ -71,6 +71,17 @@
   }
   table.matrix .day-count { font-size: 0.68rem; color: #666; font-weight: normal; }
   .day-summary { margin-top: 3px; display: flex; justify-content: center; gap: 2px; flex-wrap: nowrap; }
+  /* Actual dish names under the category badges — without this, whoever's
+     handing out bento (or checking the sheet after picking theirs up) can
+     only see "フライあり" etc., not what today's フライあり actually is. */
+  .day-menu-names {
+    margin-top: 4px;
+    font-size: 0.58rem;
+    line-height: 1.35;
+    color: #444;
+    font-weight: normal;
+    white-space: normal;
+  }
   .cat-dot.day-cat-badge {
     width: auto;
     padding: 1px 3px;
@@ -169,6 +180,9 @@
                 <span class="cat-dot day-cat-badge {{ code }}">{{ category_print_short[code] }}{{ day.cat_counts[code] }}</span>
                 {% endif %}
               {% endfor %}
+            </div>
+            <div class="day-menu-names">
+              {% for code in category_codes %}{% if code in day.cats %}{{ category_print_short[code] }}: {{ day.cats[code] }}{% if not loop.last %}<br>{% endif %}{% endif %}{% endfor %}
             </div>
             {% endif %}
           </th>

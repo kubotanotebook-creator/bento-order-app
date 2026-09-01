@@ -85,7 +85,6 @@
   <button type="button" class="tab-btn" data-tab="orders" role="tab">チケット回収</button>
   <button type="button" class="tab-btn" data-tab="tickets" role="tab">チケット受け渡し</button>
   <button type="button" class="tab-btn" data-tab="proxy" role="tab">代理注文</button>
-  <button type="button" class="tab-btn" data-tab="summary" role="tab">りりてー注文数確認</button>
   <button type="button" class="tab-btn" data-tab="print" role="tab">弁当チェック表印刷</button>
   <button type="button" class="tab-btn" data-tab="settings" role="tab">メニュー・設定</button>
 </div>
@@ -127,7 +126,13 @@
       {% if g.orders %}
       {% if g.label %}<h3 style="margin-bottom:4px;">{{ g.label }}({{ g.current_count }}名)</h3>{% endif %}
       <div class="table-scroll" style="margin-bottom:16px;">
-      <table class="table">
+      <table class="table today-orders-table">
+        <colgroup>
+          <col style="width:32px;">
+          <col style="width:110px;">
+          <col>
+          <col style="width:140px;">
+        </colgroup>
         <thead><tr><th style="width:1%;"></th><th>氏名</th><th>メニュー</th><th>操作</th></tr></thead>
         <tbody>
           {% for o in g.orders %}
@@ -190,6 +195,23 @@
     {% for week in proxy_weeks %}
     <div class="summary-block">
       <h3>{{ week.label }}</h3>
+      <div class="table-scroll" style="margin-bottom:10px;">
+      <table class="table proxy-menu-ref">
+        <thead>
+          <tr><th></th>{% for day in week.days %}<th>{{ day.weekday }} {{ day.mmdd }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for code in category_codes %}
+          <tr>
+            <td data-label="">{{ category_labels[code] }}</td>
+            {% for day in week.days %}
+            <td data-label="{{ day.weekday }} {{ day.mmdd }}">{{ day.cats[code].name if code in day.cats else '—' }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
       <form method="post" action="{{ url_for('admin_proxy_add_week') }}">
         <input type="hidden" name="week_monday" value="{{ week.monday }}">
         <label>氏名
@@ -262,30 +284,6 @@
   </div>
 
   <div class="card">
-    <h1>運用開始時の残枚数を登録(最初に1回だけ)</h1>
-    <p class="muted">
-      アプリを使い始める時点で、すでに配ってあるチケットの<strong>残り枚数</strong>をここで登録します。
-      アプリは「最後に渡した枚数 − アプリに入っている注文数」で残りを計算するため、
-      これを入れておかないと、使いかけの冊が満タン(10枚)として表示されてしまいます。
-    </p>
-    <p class="muted">
-      <strong>この登録は天引きの対象になりません。</strong>すでに紙の運用で精算済みのぶんだからです。
-      8月16日以降に新しく渡した冊は、上の「10枚渡した記録」に実際の日付で登録してください(そちらは天引きに反映されます)。
-    </p>
-    <form method="post" action="{{ url_for('admin_set_opening_tickets') }}" class="grid-form">
-      <label>氏名
-        <input type="text" name="employee_name" list="employee-list" placeholder="例: 山田 太郎" required>
-      </label>
-      <label>基準日<input type="date" name="issued_at" value="{{ today }}" required></label>
-      <label>この日時点の残り枚数
-        <input type="number" name="remaining" min="0" max="10" step="1" placeholder="例: 4" required>
-      </label>
-      <button type="submit" class="btn primary">残り枚数を登録</button>
-    </form>
-    <p class="muted" style="margin-bottom:0;">まだアプリを使ったことがない人の分も、氏名を直接入力して登録できます。</p>
-  </div>
-
-  <div class="card">
     <h1>月ごとの天引き集計(給与処理用)</h1>
     <p class="muted">給与締め(16日〜翌15日)ごとに、社員別の受け渡し冊数と天引き額をまとめています。給与処理の際にご利用ください。</p>
     {% if payroll_deduction_cycles %}
@@ -330,76 +328,29 @@
     <p class="muted">まだ受け渡し記録がありません。</p>
     {% endif %}
   </div>
-</div>
 
-{% macro summary_date_group(d, s, is_today=False) %}
-  <div class="date-group">
-    <div class="date-group-header">
-      <button type="button" class="date-toggle-btn {{ 'is-today' if is_today }}" data-target="summary-{{ d }}">
-        <span class="chevron">▶</span> {{ d }}({{ d|weekday_jp }}){% if is_today %} <span class="badge open">本日</span>{% endif %}
-      </button>
-      <span class="date-counts">
-        合計{{ s.count }}食
-        {% for code in category_codes %}{% if s.cat_counts.get(code) %}・{{ category_short[code] }}{{ s.cat_counts[code] }}{% endif %}{% endfor %}
-      </span>
-    </div>
-    <div class="date-group-body" id="summary-{{ d }}" hidden>
-      <ul>
-        {% for item_name, qty in s.item_counts.items() %}
-          <li>{{ item_name }}: {{ qty }} 食
-            <span class="muted" style="font-size:0.85rem;">({{ s.item_names[item_name] | join('、') }})</span>
-          </li>
-        {% endfor %}
-      </ul>
-    </div>
-  </div>
-{% endmacro %}
-
-<div class="tab-panel" data-tab="summary">
   <div class="card">
-    <h1>りりてー注文数確認</h1>
-    <p class="muted">🍱 <strong>発注・FAX用</strong> — メニュー(唐揚げ・焼き魚など)ごとに何食かをまとめています。リリテイへの連絡はここを見てください。個人ごとのキャンセルやチケット確認は「チケット回収」タブで行います。</p>
-    <p class="muted">日付をクリックすると内訳が開きます。本日の分は最初から開いています。未来の分は週ごと、過ぎた分は月ごとにまとまっているので、見たいところをクリックして開いてください。</p>
-
-    {% if today_summary %}
-      {{ summary_date_group(today, today_summary, is_today=True) }}
-    {% endif %}
-
-    {% if not today_summary and not summary_future_weeks and not summary_past_months %}
-    <p class="muted">まだ注文がありません。</p>
-    {% endif %}
-
-    {% for week in summary_future_weeks %}
-    <div class="date-group">
-      <div class="date-group-header">
-        <button type="button" class="date-toggle-btn" data-target="summary-week-{{ week.monday }}">
-          <span class="chevron">▶</span> {{ week.label }}
-        </button>
-        <span class="date-counts">合計{{ week.count }}食</span>
-      </div>
-      <div class="date-group-body nested-group-body" id="summary-week-{{ week.monday }}" hidden>
-        {% for day in week.date_groups %}
-          {{ summary_date_group(day.date, day.s) }}
-        {% endfor %}
-      </div>
-    </div>
-    {% endfor %}
-
-    {% for month in summary_past_months %}
-    <div class="date-group">
-      <div class="date-group-header">
-        <button type="button" class="date-toggle-btn" data-target="summary-month-{{ month.month_key }}">
-          <span class="chevron">▶</span> {{ month.label }}
-        </button>
-        <span class="date-counts">合計{{ month.count }}食</span>
-      </div>
-      <div class="date-group-body nested-group-body" id="summary-month-{{ month.month_key }}" hidden>
-        {% for day in month.date_groups %}
-          {{ summary_date_group(day.date, day.s) }}
-        {% endfor %}
-      </div>
-    </div>
-    {% endfor %}
+    <h1>運用開始時の残枚数を登録(最初に1回だけ)</h1>
+    <p class="muted">
+      アプリを使い始める時点で、すでに配ってあるチケットの<strong>残り枚数</strong>をここで登録します。
+      アプリは「最後に渡した枚数 − アプリに入っている注文数」で残りを計算するため、
+      これを入れておかないと、使いかけの冊が満タン(10枚)として表示されてしまいます。
+    </p>
+    <p class="muted">
+      <strong>この登録は天引きの対象になりません。</strong>すでに紙の運用で精算済みのぶんだからです。
+      8月16日以降に新しく渡した冊は、上の「10枚渡した記録」に実際の日付で登録してください(そちらは天引きに反映されます)。
+    </p>
+    <form method="post" action="{{ url_for('admin_set_opening_tickets') }}" class="grid-form">
+      <label>氏名
+        <input type="text" name="employee_name" list="employee-list" placeholder="例: 山田 太郎" required>
+      </label>
+      <label>基準日<input type="date" name="issued_at" value="{{ today }}" required></label>
+      <label>この日時点の残り枚数
+        <input type="number" name="remaining" min="0" max="10" step="1" placeholder="例: 4" required>
+      </label>
+      <button type="submit" class="btn primary">残り枚数を登録</button>
+    </form>
+    <p class="muted" style="margin-bottom:0;">まだアプリを使ったことがない人の分も、氏名を直接入力して登録できます。</p>
   </div>
 </div>
 
@@ -851,12 +802,18 @@
 <div class="tab-panel" data-tab="print">
   <div class="card">
     <h1>弁当チェック表印刷</h1>
-    <p class="muted">お弁当受け取り時に紙にレ点をつけるための一覧です。週1枚まとめて印刷しておき、締切後の当日追加分はその紙に手書きで追記する運用がおすすめです。</p>
+    <p class="muted">お弁当受け取り時に紙にレ点をつけるための一覧です。区分ごとの食数・メニュー名も載っているので、りりてーへのFAX連絡はこの印刷画面を見て行ってください。週1枚まとめて印刷しておき、締切後の当日追加分はその紙に手書きで追記する運用がおすすめです。</p>
     <p>
       <a href="{{ url_for('admin_print_checklist_week') }}" target="_blank" class="btn primary">今週分をまとめてA4で印刷(1枚)</a>
     </p>
+    <form method="get" action="{{ url_for('admin_print_checklist_week') }}" target="_blank" class="inline-form">
+      <label style="margin-bottom:0;">週を指定して印刷(過去・未来もOK)
+        <input type="date" name="monday" value="{{ check_date }}">
+      </label>
+      <button type="submit" class="btn small">その週の分を印刷</button>
+    </form>
     <form method="get" action="{{ url_for('admin_print_checklist') }}" target="_blank" class="inline-form">
-      <label style="margin-bottom:0;">日付を指定して印刷
+      <label style="margin-bottom:0;">日付を指定して印刷(1日だけ)
         <input type="date" name="date" value="{{ check_date }}">
       </label>
       <button type="submit" class="btn small">この日の分だけ印刷</button>

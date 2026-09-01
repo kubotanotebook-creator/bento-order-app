@@ -181,6 +181,20 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .table-requests td:nth-child(3) { white-space: normal; max-width: 320px; }
 .table-requests td:nth-child(4) { white-space: nowrap; }
 
+/* 本日の注文 is split into one <table> per category (フライあり/フライなし/
+   やさい) so each can carry its own heading — but left to its own auto
+   layout, each table sizes columns from its own row content, so the same
+   column drifts left/right between one category's table and the next.
+   Fixed widths shared by every instance keep 氏名/メニュー/操作 lined up
+   vertically no matter which category's table it is. */
+.today-orders-table { table-layout: fixed; }
+.today-orders-table td:nth-child(3) { white-space: normal; }
+
+/* Quick reference so an admin registering a proxy order doesn't have to
+   open the category dropdown just to remember what that day's dish is. */
+.proxy-menu-ref td, .proxy-menu-ref th { white-space: normal; font-size: 0.85rem; }
+.proxy-menu-ref td:first-child, .proxy-menu-ref th:first-child { font-weight: 600; color: #666; white-space: nowrap; }
+
 /* At-a-glance 区分ごとの headcount vs what was already FAXed, on the admin's
    daily attendance card. A flat number is easy to skim past — a colored box
    per category, with the delta only shown when it's nonzero, is meant to be
