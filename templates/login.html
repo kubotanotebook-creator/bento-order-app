@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% block title %}お名前の入力{% endblock %}
 {% block content %}
+<div class="login-page">
 {% if manual_video_url or manual_url %}
-<div class="card narrow" style="background:#fff7f0; border-color:#f0dcc8;">
-  <p style="margin:0 0 10px;">🔰 <strong>初めての方はまずこちらをご覧ください</strong></p>
+<div class="card narrow login-hero">
+  <p class="login-hero-label">🔰 初めての方はまずこちらをご覧ください</p>
   {% if manual_video_url %}
-  <a class="btn dashboard-link" href="{{ manual_video_url }}" target="_blank" rel="noopener">🎬 使い方動画を見る</a>
+  <a class="btn login-hero-btn" href="{{ manual_video_url }}" target="_blank" rel="noopener">🎬 使い方動画を見る</a>
   {% else %}
-  <a class="btn dashboard-link" href="{{ manual_url }}" target="_blank" rel="noopener">📖 使い方ガイドを見る</a>
+  <a class="btn login-hero-btn" href="{{ manual_url }}" target="_blank" rel="noopener">📖 使い方ガイドを見る</a>
   {% endif %}
 </div>
 {% endif %}
@@ -15,7 +16,8 @@
   <h1>お名前を入力してください</h1>
   <form method="post" action="{{ url_for('index') }}" id="login-form">
     <label>氏名(フルネーム)</label>
-    <input type="text" name="employee_name" id="employee_name_input" list="employee-list" placeholder="例: 山田 太郎" required autofocus>
+    <p class="field-hint">⚠️ 姓と名の間に必ずスペースを入れてください</p>
+    <input type="text" name="employee_name" id="employee_name_input" list="employee-list" placeholder="山田 太郎" required autofocus>
     <datalist id="employee-list">
       {% for name in known_employees %}<option value="{{ name }}">{% endfor %}
     </datalist>
@@ -23,8 +25,8 @@
     <input type="text" name="birthday" id="employee_birthday_input" placeholder="例: 5月17日 → 0517" inputmode="numeric" maxlength="4" required>
     <button type="submit" class="btn primary">はじめる</button>
   </form>
-  <p class="muted">※簡易ログインです。他の人に成りすまして注文されるのを防ぐため、名前とあわせて生年月日(月日のみ)を確認しています。初めて使う名前は、その生年月日をそのまま覚えます。次回以降は同じ生年月日を入力してください(このブラウザでは前回の内容を自動で入力しています)。</p>
-  <p class="muted">※姓と名の間のスペースは、半角でも全角でも、入れ忘れても同じ人として扱われます。</p>
+  <p class="muted small-note">初めての方は氏名(姓と名の間にスペース)と生年月日(月日)で登録されます。次回以降は同じ組み合わせを入力するだけでログインできます(このブラウザでは前回の内容を自動入力しています)。</p>
+</div>
 </div>
 <script>
 (function () {

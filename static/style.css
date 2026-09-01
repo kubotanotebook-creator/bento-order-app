@@ -109,6 +109,18 @@ nav a:hover { text-decoration: underline; }
 .faq-item[open] summary::before { content: "▼ "; }
 .faq-item p { margin: 8px 0 0; color: #444; }
 .card.narrow { max-width: 400px; margin: 60px auto; }
+.login-page { padding-top: 24px; }
+.login-page .card.narrow { margin: 0 auto 16px; }
+.login-hero { background: #eaf3fb; border-color: #cadcf0; text-align: center; }
+.login-hero-label { margin: 0 0 12px; font-weight: 700; color: #145591; }
+.btn.login-hero-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; padding: 14px 18px; font-size: 1.02rem; font-weight: 700;
+  background: #1971c2; color: #fff; border-radius: 8px; text-decoration: none;
+}
+.btn.login-hero-btn:hover { background: #145591; }
+.field-hint { margin: 0 0 6px; font-size: 0.85rem; font-weight: 600; color: #b23b0c; }
+.small-note { font-size: 0.8rem; line-height: 1.5; margin-top: 14px; }
 
 h1 { font-size: 1.3rem; margin: 0 0 10px; }
 h2 { font-size: 1.1rem; margin: 0; }
