@@ -2,16 +2,6 @@
 {% block title %}お名前の入力{% endblock %}
 {% block content %}
 <div class="login-page">
-{% if manual_video_url or manual_url %}
-<div class="card narrow login-hero">
-  <p class="login-hero-label">🔰 初めての方はまずこちらをご覧ください</p>
-  {% if manual_video_url %}
-  <a class="btn login-hero-btn" href="{{ manual_video_url }}" target="_blank" rel="noopener">🎬 使い方動画を見る</a>
-  {% else %}
-  <a class="btn login-hero-btn" href="{{ manual_url }}" target="_blank" rel="noopener">📖 使い方ガイドを見る</a>
-  {% endif %}
-</div>
-{% endif %}
 <div class="card narrow">
   <h1>お名前を入力してください</h1>
   <form method="post" action="{{ url_for('index') }}" id="login-form">
@@ -27,6 +17,16 @@
   </form>
   <p class="muted small-note">生年月日は他の人との成りすまし防止のための本人確認に使います。次回以降は同じ氏名・生年月日を入力するだけでログインできます(このブラウザでは前回の内容を自動入力しています)。</p>
 </div>
+{% if manual_video_url or manual_url %}
+<div class="card narrow login-hero">
+  <p class="login-hero-label">🔰 初めての方はまずこちらをご覧ください</p>
+  {% if manual_video_url %}
+  <a class="btn login-hero-btn" href="{{ manual_video_url }}" target="_blank" rel="noopener">🎬 使い方動画を見る</a>
+  {% else %}
+  <a class="btn login-hero-btn" href="{{ manual_url }}" target="_blank" rel="noopener">📖 使い方ガイドを見る</a>
+  {% endif %}
+</div>
+{% endif %}
 </div>
 <script>
 (function () {
