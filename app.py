@@ -340,6 +340,16 @@ def init_db():
             created_at TEXT NOT NULL,
             resolved_at TEXT
         );
+
+        -- Admin-authored FAQ shown on the employee dashboard (top 5, oldest
+        -- first). Kept intentionally simple — no reordering UI — since the
+        -- ask was a short fixed list, not a searchable knowledge base.
+        CREATE TABLE IF NOT EXISTS faq_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL,
+            answer TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         """
     )
     db.commit()
@@ -606,6 +616,13 @@ def get_open_personal_notices(db, employee_name):
             (employee_name,),
         ).fetchall()
     ]
+
+
+def get_faq_items(db, limit=None):
+    sql = "SELECT id, question, answer FROM faq_items ORDER BY id"
+    if limit:
+        sql += f" LIMIT {int(limit)}"
+    return [dict(r) for r in db.execute(sql).fetchall()]
 
 
 def log_order_change(db, order_date, old_category, new_category):
@@ -954,7 +971,11 @@ def index():
             r["employee_name"]
             for r in db.execute("SELECT DISTINCT employee_name FROM orders ORDER BY employee_name").fetchall()
         ]
-        return render_template("login.html", known_employees=known_employees)
+        return render_template(
+            "login.html",
+            known_employees=known_employees,
+            manual_url=manual_url("employee", EMPLOYEE_MANUAL_URL_FALLBACK),
+        )
 
     db = get_db()
     settings = get_settings()
@@ -1115,6 +1136,7 @@ def index():
         show_tour=show_tour,
         resolution_notices=resolution_notices,
         personal_notices=personal_notices,
+        faq_items=get_faq_items(db, limit=5),
     )
 
 
@@ -1814,7 +1836,10 @@ def admin_login():
             session["is_admin"] = True
             return redirect(url_for("admin_dashboard"))
         flash("パスワードが違います。", "error")
-    return render_template("admin_login.html")
+    return render_template(
+        "admin_login.html",
+        admin_manual_url=manual_url("admin", ADMIN_MANUAL_URL_FALLBACK),
+    )
 
 
 @app.route("/admin/logout")
@@ -2068,6 +2093,7 @@ def admin_dashboard():
     return render_template(
         "admin.html",
         pending_personal_notices=pending_personal_notices,
+        faq_items=get_faq_items(db),
         menu_by_date=menu_by_date,
         upcoming_closed_days=upcoming_closed_days,
         mail_configured=notify.is_configured(),
@@ -2444,6 +2470,36 @@ def admin_personal_notice_resolve():
     )
     db.commit()
     flash("対応済みにしました。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/faq/add", methods=["POST"])
+def admin_faq_add():
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    question = request.form.get("question", "").strip()
+    answer = request.form.get("answer", "").strip()
+    if not question or not answer:
+        flash("質問と回答を入力してください。", "error")
+        return redirect(url_for("admin_dashboard"))
+    db.execute(
+        "INSERT INTO faq_items (question, answer, created_at) VALUES (?, ?, ?)",
+        (question, answer, now_jst().isoformat()),
+    )
+    db.commit()
+    flash("FAQを追加しました(社員画面には上位5件だけ表示されます)。", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/faq/delete", methods=["POST"])
+def admin_faq_delete():
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+    db = get_db()
+    db.execute("DELETE FROM faq_items WHERE id = ?", (request.form.get("faq_id"),))
+    db.commit()
+    flash("FAQを削除しました。", "success")
     return redirect(url_for("admin_dashboard"))
 
 

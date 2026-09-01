@@ -198,6 +198,18 @@
 </div>
 {% endif %}
 
+{% if faq_items %}
+<div class="card">
+  <h1 style="margin-top:0;">よくある質問</h1>
+  {% for f in faq_items %}
+  <details class="faq-item">
+    <summary>{{ f.question }}</summary>
+    <p>{{ f.answer }}</p>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="card">
   <h1 style="margin-top:0;">アプリの共有</h1>
   <p>社内掲示板や食堂にあるQRコードから開けます。新しく入った方には「他の人に教える」からQRコードを見せてあげてください。</p>

@@ -8,5 +8,8 @@
     <input type="password" name="password" required autofocus>
     <button type="submit" class="btn primary">ログイン</button>
   </form>
+  {% if admin_manual_url %}
+  <p class="muted" style="margin-top:14px; margin-bottom:0;">📖 <a href="{{ admin_manual_url }}" target="_blank" rel="noopener">管理者マニュアルを見る</a>(ログイン後に開けます)</p>
+  {% endif %}
 </div>
 {% endblock %}

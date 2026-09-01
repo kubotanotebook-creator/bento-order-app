@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block title %}お名前の入力{% endblock %}
 {% block content %}
+{% if manual_url %}
+<div class="card narrow" style="background:#fff7f0; border-color:#f0dcc8;">
+  <p style="margin:0;">🔰 <strong>初めての方はまずこちらをご覧ください</strong> — <a href="{{ manual_url }}" target="_blank" rel="noopener">使い方ガイドを見る</a></p>
+</div>
+{% endif %}
 <div class="card narrow">
   <h1>お名前を入力してください</h1>
   <form method="post" action="{{ url_for('index') }}" id="login-form">

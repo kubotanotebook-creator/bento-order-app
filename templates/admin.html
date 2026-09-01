@@ -741,6 +741,41 @@
   </div>
 
   <div class="card">
+    <h1>よくある質問(FAQ)</h1>
+    <p class="muted">社員ダッシュボードの「よくある質問」に表示されます(上位5件だけが表示されるので、増えてきたらよく聞かれるものを上に残してください)。</p>
+    <form method="post" action="{{ url_for('admin_faq_add') }}" class="grid-form">
+      <label>質問
+        <input type="text" name="question" placeholder="例: チケットはどうやってもらえますか?" required>
+      </label>
+      <label>回答
+        <textarea name="answer" rows="2" style="width:100%;" placeholder="例: 松浦さんか陽介さんから直接10枚1冊で受け取ります。" required></textarea>
+      </label>
+      <button type="submit" class="btn small primary">この内容で追加する</button>
+    </form>
+    {% if faq_items %}
+    <div class="table-scroll" style="margin-top:16px;">
+    <table class="table">
+      <thead><tr><th>質問</th><th>回答</th><th></th></tr></thead>
+      <tbody>
+        {% for f in faq_items %}
+        <tr>
+          <td data-label="質問">{{ f.question }}</td>
+          <td data-label="回答">{{ f.answer }}</td>
+          <td data-label="">
+            <form method="post" action="{{ url_for('admin_faq_delete') }}" class="inline-form" onsubmit="return confirm('このFAQを削除しますか?');">
+              <input type="hidden" name="faq_id" value="{{ f.id }}">
+              <button type="submit" class="btn small">削除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
     <h1>使い方マニュアル(PDF)</h1>
     <p class="muted">ここでアップロードしたPDFが、社員のダッシュボードや管理画面上部の「マニュアル」リンクからそのまま見られます(Googleドライブのリンク管理は不要です)。</p>
     {% for kind, label in [("employee", "社員向け"), ("admin", "管理者向け")] %}
