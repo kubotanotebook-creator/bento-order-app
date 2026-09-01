@@ -808,16 +808,23 @@ def compute_payroll_deduction_cycles(db, price_per_booklet):
         "SELECT * FROM ticket_issuances WHERE kind = 'issue' ORDER BY issued_at").fetchall()
     payroll_cycles_by_key = {}
     for row in all_issuances:
-        start, end = payroll_cycle(date.fromisoformat(row["issued_at"]))
+        issued = date.fromisoformat(row["issued_at"])
+        start, end = payroll_cycle(issued)
         cyc = payroll_cycles_by_key.setdefault((start, end), {})
-        emp = cyc.setdefault(row["employee_name"], {"booklets": 0})
+        emp = cyc.setdefault(row["employee_name"], {"booklets": 0, "dates": []})
         emp["booklets"] += 1
+        emp["dates"].append(f"{issued.month}/{issued.day}")
 
     payroll_deduction_cycles = []
     for (cyc_start, cyc_end) in sorted(payroll_cycles_by_key.keys(), reverse=True):
         emp_map = payroll_cycles_by_key[(cyc_start, cyc_end)]
         employees_rows = [
-            {"name": name, "booklets": info["booklets"], "total": info["booklets"] * price_per_booklet}
+            {
+                "name": name,
+                "booklets": info["booklets"],
+                "total": info["booklets"] * price_per_booklet,
+                "dates": info["dates"],
+            }
             for name, info in sorted(emp_map.items())
         ]
         payroll_deduction_cycles.append({

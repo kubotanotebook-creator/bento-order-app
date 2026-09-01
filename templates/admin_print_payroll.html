@@ -52,6 +52,7 @@
   table.payroll .num { text-align: right; font-variant-numeric: tabular-nums; }
   table.payroll .payroll-amount { color: #b23b0c; font-weight: 700; }
   table.payroll tbody tr:nth-child(even) { background: #f7f7f8; }
+  .issued-dates { margin-left: 8px; font-size: 0.78rem; color: #777; }
 
   .footnote { margin-top: 14px; font-size: 0.78rem; color: #777; }
 
@@ -96,7 +97,7 @@
       <tbody>
         {% for e in cyc.employees %}
         <tr>
-          <td>{{ e.name }}</td>
+          <td>{{ e.name }}<span class="issued-dates">({{ e.dates|join('、') }})</span></td>
           <td class="num">{{ e.booklets }}冊</td>
           <td class="num payroll-amount">¥{{ e.total }}</td>
         </tr>
