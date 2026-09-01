@@ -452,10 +452,25 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .quick-status-row.warn { background: #fff4e5; color: #8a5200; }
 .quick-status-label { font-weight: 700; }
 
-.summary-row { display: flex; gap: 24px; margin: 10px 0; }
+.summary-row { display: flex; gap: 24px; margin: 10px 0; flex-wrap: wrap; }
 .stat { display: flex; flex-direction: column; }
 .stat-label { font-size: 0.8rem; color: #888; }
-.stat-value { font-size: 1.4rem; font-weight: 700; }
+.stat-value { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.payroll-headline {
+  background: #fff7f0;
+  border: 1px solid #f0dcc8;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.payroll-headline-label { font-size: 0.85rem; font-weight: 700; color: #b23b0c; }
+.payroll-headline .summary-row { margin: 6px 0 0; }
+.payroll-amount { color: #b23b0c; }
+.payroll-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .payroll-table .num { text-align: right; }
+}
 
 .summary-block { border-top: 1px dashed #e2e4e8; padding-top: 10px; margin-top: 10px; }
 
@@ -492,14 +507,15 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .is-cancelled { text-decoration: line-through; color: #aaa; }
 
 /* Admin dashboard tabs: the page used to be one long scroll through every
-   section (settings, summary, menu registration, proxy orders, order list).
-   Splitting into tabs keeps each section reachable without endless
-   scrolling; "本日の注文" stays outside the tabs since it's the one card
-   admins need to see immediately every morning. */
+   section (settings, summary, menu registration, proxy orders, order list,
+   and the daily 本日の注文 check). Splitting into tabs keeps each section
+   reachable without endless scrolling; 本日の注文 is the first tab and the
+   one always shown on page load, since it's what admins need to see every
+   morning. */
 .admin-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   margin: 4px 0 18px;
   border-bottom: 1px solid #e2e4e8;
   padding-bottom: 0;
@@ -513,9 +529,18 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
   padding: 10px 14px;
   cursor: pointer;
   border-bottom: 3px solid transparent;
+  border-radius: 6px 6px 0 0;
   margin-bottom: -1px;
 }
-.tab-btn.active { color: #d9480f; border-bottom-color: #d9480f; }
-.tab-btn:hover { color: #d9480f; }
+/* Hover and active are deliberately different treatments (background tint
+   vs. background fill + underline + color) so hovering a neighboring tab
+   never looks like the active one. */
+.tab-btn:hover { background: #f1f2f4; color: #444; }
+.tab-btn.active {
+  color: #d9480f;
+  background: #fff4ec;
+  border-bottom-color: #d9480f;
+}
+.tab-btn.active:hover { background: #fff4ec; }
 
 .paid-toggle { width: auto; margin: 0; }

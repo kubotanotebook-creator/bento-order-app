@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>給与天引き集計表{% if cyc %}_{{ cyc.label }}{% endif %}</title>
+<style>
+  * { box-sizing: border-box; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    color: #222;
+    margin: 0;
+    padding: 20px;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .toolbar a { color: #555; text-decoration: none; font-size: 0.9rem; }
+  .toolbar form { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+  .toolbar select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; }
+  .btn {
+    border: none; border-radius: 6px; padding: 8px 16px; font-size: 0.9rem;
+    cursor: pointer; background: #d9480f; color: #fff;
+  }
+  .btn.secondary { background: #555; }
+
+  .sheet { max-width: 640px; margin: 0 auto; }
+  .sheet h1 { font-size: 1.2rem; margin: 0 0 2px; }
+  .sheet .sub { color: #555; margin-bottom: 16px; font-size: 0.9rem; }
+
+  .headline {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    background: #fff7f0;
+    border: 1px solid #f0dcc8;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 18px;
+  }
+  .headline .stat { display: flex; flex-direction: column; }
+  .headline .stat-label { font-size: 0.78rem; color: #8a7a6c; }
+  .headline .stat-value { font-size: 1.5rem; font-weight: 700; }
+
+  table.payroll { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  table.payroll th, table.payroll td { border-bottom: 1px solid #ccc; padding: 8px 6px; text-align: left; }
+  table.payroll th { color: #555; font-weight: 600; font-size: 0.85rem; }
+  table.payroll .num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.payroll .payroll-amount { color: #b23b0c; font-weight: 700; }
+  table.payroll tbody tr:nth-child(even) { background: #f7f7f8; }
+
+  .footnote { margin-top: 14px; font-size: 0.78rem; color: #777; }
+
+  @media print {
+    .toolbar { display: none; }
+    body { padding: 0; }
+    .sheet { max-width: none; }
+  }
+  @page { size: A4 portrait; margin: 18mm; }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="{{ url_for('admin_dashboard') }}">← 管理画面に戻る</a>
+    {% if cycle_options %}
+    <form method="get" action="{{ url_for('admin_print_payroll') }}">
+      <label>対象月
+        <select name="end" onchange="this.form.submit()">
+          {% for opt in cycle_options %}
+          <option value="{{ opt.end }}" {% if cyc and opt.end == cyc.end.isoformat() %}selected{% endif %}>{{ opt.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </form>
+    {% endif %}
+    <button type="button" class="btn" onclick="window.print()">印刷する(A4)</button>
+  </div>
+
+  <div class="sheet">
+    {% if cyc %}
+    <h1>給与天引き集計表</h1>
+    <p class="sub">対象期間: {{ cyc.label }}(給与天引き日: {{ cyc.deduction_date_label }})</p>
+
+    <div class="headline">
+      <div class="stat"><span class="stat-label">対象人数</span><span class="stat-value">{{ cyc.employees|length }}名</span></div>
+    </div>
+
+    <table class="payroll">
+      <thead>
+        <tr><th>氏名</th><th class="num">受け渡し冊数</th><th class="num">天引き額</th></tr>
+      </thead>
+      <tbody>
+        {% for e in cyc.employees %}
+        <tr>
+          <td>{{ e.name }}</td>
+          <td class="num">{{ e.booklets }}冊</td>
+          <td class="num payroll-amount">¥{{ e.total }}</td>
+        </tr>
+        {% endfor %}
+        {% if not cyc.employees %}
+        <tr><td colspan="3">この期間の受け渡し記録はありません。</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <p class="footnote">※ 10枚1冊あたりの金額をもとに算出しています。運用開始時点ですでに精算済みの残枚数は含まれません。天引き額は社員ごとに個別処理されるため、全員分の合計額は表示していません。</p>
+    {% else %}
+    <h1>給与天引き集計表</h1>
+    <p class="sub">まだ受け渡し記録がありません。</p>
+    {% endif %}
+  </div>
+</body>
+</html>

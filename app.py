@@ -799,6 +799,39 @@ def payroll_deduction_date(cycle_end):
     return d
 
 
+def compute_payroll_deduction_cycles(db, price_per_booklet):
+    """Every ticket handout grouped into 16th-to-15th cycles, broken down per
+    employee, newest cycle first — shared by the admin dashboard card and the
+    printable A4 sheet so both read off the same numbers. 運用開始時の残枚数
+    (kind='opening') は既に精算済みのぶんなので集計しない。"""
+    all_issuances = db.execute(
+        "SELECT * FROM ticket_issuances WHERE kind = 'issue' ORDER BY issued_at").fetchall()
+    payroll_cycles_by_key = {}
+    for row in all_issuances:
+        start, end = payroll_cycle(date.fromisoformat(row["issued_at"]))
+        cyc = payroll_cycles_by_key.setdefault((start, end), {})
+        emp = cyc.setdefault(row["employee_name"], {"booklets": 0})
+        emp["booklets"] += 1
+
+    payroll_deduction_cycles = []
+    for (cyc_start, cyc_end) in sorted(payroll_cycles_by_key.keys(), reverse=True):
+        emp_map = payroll_cycles_by_key[(cyc_start, cyc_end)]
+        employees_rows = [
+            {"name": name, "booklets": info["booklets"], "total": info["booklets"] * price_per_booklet}
+            for name, info in sorted(emp_map.items())
+        ]
+        payroll_deduction_cycles.append({
+            "start": cyc_start,
+            "end": cyc_end,
+            "label": f"{cyc_start.month}/{cyc_start.day}〜{cyc_end.month}/{cyc_end.day}",
+            "deduction_date_label": f"{payroll_deduction_date(cyc_end).month}/{payroll_deduction_date(cyc_end).day}",
+            "employees": employees_rows,
+            "total_booklets": sum(e["booklets"] for e in employees_rows),
+            "total_amount": sum(e["total"] for e in employees_rows),
+        })
+    return payroll_deduction_cycles
+
+
 def employee_ticket_status(db, employee_name, today):
     """Ticket status from the logged 受け渡し記録 (admin_issue_tickets): the
     last booklet handed out, minus the tickets the admin has actually
@@ -1968,29 +2001,7 @@ def admin_dashboard():
     # down per employee so whoever processes payroll can read each person's
     # deduction straight off this screen instead of counting rows by hand.
     price_per_booklet = settings["price"] * 10
-    # 運用開始時の残枚数(kind='opening')は既に精算済みのぶんなので集計しない。
-    all_issuances = db.execute(
-        "SELECT * FROM ticket_issuances WHERE kind = 'issue' ORDER BY issued_at").fetchall()
-    payroll_cycles_by_key = {}
-    for row in all_issuances:
-        start, end = payroll_cycle(date.fromisoformat(row["issued_at"]))
-        cyc = payroll_cycles_by_key.setdefault((start, end), {})
-        emp = cyc.setdefault(row["employee_name"], {"booklets": 0})
-        emp["booklets"] += 1
-
-    payroll_deduction_cycles = []
-    for (cyc_start, cyc_end) in sorted(payroll_cycles_by_key.keys(), reverse=True):
-        emp_map = payroll_cycles_by_key[(cyc_start, cyc_end)]
-        employees_rows = [
-            {"name": name, "booklets": info["booklets"], "total": info["booklets"] * price_per_booklet}
-            for name, info in sorted(emp_map.items())
-        ]
-        payroll_deduction_cycles.append({
-            "label": f"{cyc_start.month}/{cyc_start.day}〜{cyc_end.month}/{cyc_end.day}",
-            "employees": employees_rows,
-            "total_booklets": sum(e["booklets"] for e in employees_rows),
-            "total_amount": sum(e["total"] for e in employees_rows),
-        })
+    payroll_deduction_cycles = compute_payroll_deduction_cycles(db, price_per_booklet)
 
     # Each known name's current ticket status, for the 受け渡し記録 form's
     # employee dropdown — a plain-text field risked a handout landing on
@@ -3270,6 +3281,38 @@ def admin_print_checklist_week():
         category_labels=CATEGORY_LABELS,
         category_short=CATEGORY_SHORT,
         category_print_short=CATEGORY_PRINT_SHORT,
+    )
+
+
+@app.route("/admin/print-payroll")
+def admin_print_payroll():
+    """A4-friendly sheet for one 16th-to-15th payroll cycle: per-employee
+    booklets and deduction amount, plus a total row — handed to whoever
+    processes payroll instead of them reading the numbers off the screen."""
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+
+    db = get_db()
+    settings = get_settings()
+    price_per_booklet = settings["price"] * 10
+    cycles = compute_payroll_deduction_cycles(db, price_per_booklet)
+    if not cycles:
+        return render_template("admin_print_payroll.html", cyc=None)
+
+    end_param = request.args.get("end")
+    cyc = cycles[0]
+    if end_param:
+        for c in cycles:
+            if c["end"].isoformat() == end_param:
+                cyc = c
+                break
+
+    cycle_options = [{"end": c["end"].isoformat(), "label": c["label"]} for c in cycles]
+
+    return render_template(
+        "admin_print_payroll.html",
+        cyc=cyc,
+        cycle_options=cycle_options,
     )
 
 
