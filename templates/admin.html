@@ -198,14 +198,14 @@
       <div class="table-scroll" style="margin-bottom:10px;">
       <table class="table proxy-menu-ref">
         <thead>
-          <tr><th></th>{% for day in week.days %}<th>{{ day.weekday }} {{ day.mmdd }}</th>{% endfor %}</tr>
+          <tr><th></th>{% for code in category_codes %}<th>{{ category_labels[code] }}</th>{% endfor %}</tr>
         </thead>
         <tbody>
-          {% for code in category_codes %}
+          {% for day in week.days %}
           <tr>
-            <td data-label="">{{ category_labels[code] }}</td>
-            {% for day in week.days %}
-            <td data-label="{{ day.weekday }} {{ day.mmdd }}">{{ day.cats[code].name if code in day.cats else '—' }}</td>
+            <td data-label="">{{ day.weekday }} {{ day.mmdd }}</td>
+            {% for code in category_codes %}
+            <td data-label="{{ category_labels[code] }}">{{ day.cats[code].name if code in day.cats else '—' }}</td>
             {% endfor %}
           </tr>
           {% endfor %}
