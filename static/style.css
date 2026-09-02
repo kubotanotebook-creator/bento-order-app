@@ -107,6 +107,18 @@ nav a:hover { text-decoration: underline; }
 .faq-item summary::-webkit-details-marker { display: none; }
 .faq-item summary::before { content: "▶ "; color: #d9480f; }
 .faq-item[open] summary::before { content: "▼ "; }
+
+.resolved-log summary {
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+  color: #666;
+  font-size: 0.9rem;
+}
+.resolved-log summary::-webkit-details-marker { display: none; }
+.resolved-log summary::before { content: "▶ "; color: #999; }
+.resolved-log[open] summary::before { content: "▼ "; }
+.resolved-log[open] summary { margin-bottom: 10px; }
 .faq-item p { margin: 8px 0 0; color: #444; }
 .card.narrow { max-width: 400px; margin: 60px auto; }
 .login-page { padding-top: 24px; }

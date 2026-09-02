@@ -3,13 +3,45 @@
 {% block content %}
 <div class="card narrow">
   <h1>管理者ログイン</h1>
-  <form method="post" action="{{ url_for('admin_login') }}">
+  <form method="post" action="{{ url_for('admin_login') }}" id="admin-login-form">
+    <label>お名前(承認ログに記録されます)</label>
+    <select name="admin_name" id="admin_name_select" required>
+      <option value="" disabled selected>選択してください</option>
+      {% for name in admin_names %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+      <option value="__other__">その他(入力する)</option>
+    </select>
+    <input type="text" name="admin_name_other" id="admin_name_other_input" placeholder="お名前を入力" hidden>
     <label>パスワード</label>
-    <input type="password" name="password" required autofocus>
+    <input type="password" name="password" required>
     <button type="submit" class="btn primary">ログイン</button>
   </form>
   {% if admin_manual_url %}
   <p class="muted" style="margin-top:14px; margin-bottom:0;">📖 <a href="{{ admin_manual_url }}" target="_blank" rel="noopener">管理者マニュアルを見る</a>(ログイン後に開けます)</p>
   {% endif %}
 </div>
+<script>
+(function () {
+  var select = document.getElementById('admin_name_select');
+  var otherInput = document.getElementById('admin_name_other_input');
+  var lastName = localStorage.getItem('bento_admin_name');
+  if (lastName) {
+    var hasOption = Array.prototype.some.call(select.options, function (o) { return o.value === lastName; });
+    if (hasOption) {
+      select.value = lastName;
+    } else {
+      select.value = '__other__';
+      otherInput.hidden = false;
+      otherInput.value = lastName;
+    }
+  }
+  select.addEventListener('change', function () {
+    otherInput.hidden = select.value !== '__other__';
+    if (!otherInput.hidden) otherInput.focus();
+  });
+  document.getElementById('admin-login-form').addEventListener('submit', function () {
+    var name = select.value === '__other__' ? otherInput.value.trim() : select.value;
+    if (name) localStorage.setItem('bento_admin_name', name);
+  });
+})();
+</script>
 {% endblock %}

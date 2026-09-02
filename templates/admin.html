@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}管理画面{% endblock %}
 {% block nav %}
-  <span class="who">管理者</span>
+  <span class="who">{{ session.admin_name or '管理者' }}</span>
   {% if admin_manual_url %}<a href="{{ admin_manual_url }}" target="_blank" rel="noopener">📖 マニュアル</a>{% endif %}
   {% if admin_manual_video_url %}<a href="{{ admin_manual_video_url }}" target="_blank" rel="noopener">🎬 動画</a>{% endif %}
   <a href="{{ url_for('admin_logout') }}">ログアウト</a>
@@ -86,6 +86,31 @@
   </table>
   </div>
 </div>
+{% endif %}
+
+{% if resolved_log %}
+<details class="card resolved-log">
+  <summary>承認・却下ログ(直近{{ resolved_log|length }}件)</summary>
+  <div class="table-scroll">
+  <table class="table">
+    <thead><tr><th>日付</th><th>氏名</th><th>内容</th><th>対応</th></tr></thead>
+    <tbody>
+      {% for o in resolved_log %}
+      <tr>
+        <td data-label="日付">{{ o.order_date }}({{ o.order_date|weekday_jp }})</td>
+        <td data-label="氏名">{{ o.employee_name }}</td>
+        <td data-label="内容">
+          <span class="badge closed">{{ o.resolution_label }}</span>
+          {% if o.item_display %}{{ o.item_display }}{% endif %}
+          {% if o.resolution_detail and o.resolution in ('change_approved', 'change_rejected') %} → {{ o.resolution_detail }}{% endif %}
+        </td>
+        <td data-label="対応">{{ o.resolved_by or '(不明)' }}{% if o.resolved_at %} ・ {{ o.resolved_at[:16].replace('T', ' ') }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
 {% endif %}
 
 <div class="admin-tabs" role="tablist">

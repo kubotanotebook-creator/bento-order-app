@@ -84,6 +84,17 @@ CATEGORY_SHORT = {"fry": "フライ有り", "nofry": "なし", "veg": "野菜"}
 # without the label pushing the number outside the colored badge.
 CATEGORY_PRINT_SHORT = {"fry": "フライ", "nofry": "なし", "veg": "野菜"}
 WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
+# 管理画面ログインは共通パスワードなので、誰が承認/却下したかを残すために
+# ログイン時にこの中から選んでもらう。「その他」を選ぶと自由入力になる。
+ADMIN_NAMES = ["窪田", "松浦", "陽介"]
+RESOLUTION_LABELS = {
+    "cancel_approved": "キャンセル承認",
+    "cancel_rejected": "キャンセル却下",
+    "change_approved": "区分変更承認",
+    "change_rejected": "区分変更却下",
+    "new_approved": "新規注文承認",
+    "new_rejected": "新規注文却下",
+}
 # Same-day self-service cancel requests are only accepted before this time —
 # after it, the admin's morning attendance-check process has usually already
 # started, so further changes need to go through 松浦さん/陽介さん directly.
@@ -310,6 +321,15 @@ def init_db():
     # so there's no "toast" to show at approval time; this persists the
     # outcome until the employee's dashboard has displayed it once.
     for column in ("resolution TEXT", "resolution_detail TEXT"):
+        try:
+            db.execute(f"ALTER TABLE orders ADD COLUMN {column}")
+            db.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+    # 誰が・いつその承認/却下をしたか。管理ログインは共通パスワードなので、
+    # ログイン時に選んだ名前(session["admin_name"])をここに記録する。
+    for column in ("resolved_by TEXT", "resolved_at TEXT"):
         try:
             db.execute(f"ALTER TABLE orders ADD COLUMN {column}")
             db.commit()
@@ -577,6 +597,29 @@ def pending_cancel_requests(db):
         # "その日を過ぎてしまった" requests are the ones that cost money.
         row["is_overdue"] = order_date < today
         row["is_today"] = order_date == today
+        out.append(row)
+    return out
+
+
+def recent_resolved_log(db, limit=15):
+    """Last N approve/reject actions, newest first, with who did it and when —
+    the admin login is a shared password, so this is the only record of which
+    of 窪田/松浦/陽介 actually clicked 承認/却下 on a given request."""
+    rows = db.execute(
+        "SELECT o.order_date, o.employee_name, o.resolution, o.resolution_detail, "
+        "       o.resolved_by, o.resolved_at, m.category, m.name AS dish_name "
+        "FROM orders o LEFT JOIN menu_items m ON o.menu_item_id = m.id "
+        "WHERE o.resolution IS NOT NULL "
+        "ORDER BY o.resolved_at DESC, o.id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        row = dict(r)
+        row["resolution_label"] = RESOLUTION_LABELS.get(r["resolution"], r["resolution"])
+        row["item_display"] = (
+            item_display_name(r["category"], r["dish_name"]) if r["category"] else None
+        )
         out.append(row)
     return out
 
@@ -1876,12 +1919,19 @@ def admin_required():
 def admin_login():
     if request.method == "POST":
         pw = request.form.get("password", "")
-        if pw == ADMIN_PASSWORD:
+        name_choice = request.form.get("admin_name", "")
+        name = request.form.get("admin_name_other", "").strip() if name_choice == "__other__" else name_choice
+        if pw != ADMIN_PASSWORD:
+            flash("パスワードが違います。", "error")
+        elif not name:
+            flash("お名前を選択(または入力)してください。", "error")
+        else:
             session["is_admin"] = True
+            session["admin_name"] = name
             return redirect(url_for("admin_dashboard"))
-        flash("パスワードが違います。", "error")
     return render_template(
         "admin_login.html",
+        admin_names=ADMIN_NAMES,
         admin_manual_url=manual_url("admin", ADMIN_MANUAL_URL_FALLBACK),
     )
 
@@ -1889,6 +1939,7 @@ def admin_login():
 @app.route("/admin/logout")
 def admin_logout():
     session.pop("is_admin", None)
+    session.pop("admin_name", None)
     return redirect(url_for("admin_login"))
 
 
@@ -1938,6 +1989,7 @@ def admin_dashboard():
     # approve — surfaced up top so they're seen regardless of which tab is
     # open or whether that date's group happens to be collapsed.
     cancel_requests = pending_cancel_requests(db)
+    resolved_log = recent_resolved_log(db)
 
     # Both 注文一覧 (per-person records) and 当日注文数確認 (per-dish
     # totals) share the same "today leads, future grouped by week, past
@@ -2115,6 +2167,7 @@ def admin_dashboard():
         },
         orders=orders,
         cancel_requests=cancel_requests,
+        resolved_log=resolved_log,
         today_order_items=today_order_items,
         unpaid_today_names=unpaid_today_names,
         show_ticket_reminder_now=show_ticket_reminder_now,
@@ -2884,8 +2937,8 @@ def admin_approve_cancel_request():
     ).fetchone()
     db.execute(
         "UPDATE orders SET status = 'cancelled', cancel_requested_at = NULL, "
-        "resolution = 'cancel_approved' WHERE id = ?",
-        (order_id,),
+        "resolution = 'cancel_approved', resolved_by = ?, resolved_at = ? WHERE id = ?",
+        (session.get("admin_name"), now_jst().isoformat(), order_id),
     )
     if order:
         log_order_change(db, order["order_date"], order["category"], None)
@@ -2904,8 +2957,9 @@ def admin_reject_cancel_request():
     order_id = request.form.get("order_id")
     order = db.execute("SELECT order_date, employee_name FROM orders WHERE id = ?", (order_id,)).fetchone()
     db.execute(
-        "UPDATE orders SET cancel_requested_at = NULL, resolution = 'cancel_rejected' WHERE id = ?",
-        (order_id,),
+        "UPDATE orders SET cancel_requested_at = NULL, resolution = 'cancel_rejected', "
+        "resolved_by = ?, resolved_at = ? WHERE id = ?",
+        (session.get("admin_name"), now_jst().isoformat(), order_id),
     )
     db.commit()
     flash("キャンセル希望を却下しました(注文はそのまま残っています)。", "success")
@@ -2939,8 +2993,8 @@ def admin_approve_change_request():
     db.execute(
         "UPDATE orders SET menu_item_id = ?, change_requested_at = NULL, "
         "change_requested_item_id = NULL, resolution = 'change_approved', "
-        "resolution_detail = ? WHERE id = ?",
-        (wanted["id"], want_display, order_id),
+        "resolution_detail = ?, resolved_by = ?, resolved_at = ? WHERE id = ?",
+        (wanted["id"], want_display, session.get("admin_name"), now_jst().isoformat(), order_id),
     )
     if current_item:
         log_order_change(db, order["order_date"], current_item["category"], wanted["category"])
@@ -2973,8 +3027,8 @@ def admin_reject_change_request():
             want_display = item_display_name(wanted["category"], wanted["name"])
     db.execute(
         "UPDATE orders SET change_requested_at = NULL, change_requested_item_id = NULL, "
-        "resolution = 'change_rejected', resolution_detail = ? WHERE id = ?",
-        (want_display, order_id),
+        "resolution = 'change_rejected', resolution_detail = ?, resolved_by = ?, resolved_at = ? WHERE id = ?",
+        (want_display, session.get("admin_name"), now_jst().isoformat(), order_id),
     )
     db.commit()
     flash("変更希望を却下しました(注文はそのまま残っています)。", "success")
@@ -2996,9 +3050,9 @@ def admin_approve_new_request():
         (order_id,),
     ).fetchone()
     db.execute(
-        "UPDATE orders SET status = 'ordered', resolution = 'new_approved' "
-        "WHERE id = ? AND status = 'requested'",
-        (order_id,),
+        "UPDATE orders SET status = 'ordered', resolution = 'new_approved', "
+        "resolved_by = ?, resolved_at = ? WHERE id = ? AND status = 'requested'",
+        (session.get("admin_name"), now_jst().isoformat(), order_id),
     )
     if order:
         log_order_change(db, order["order_date"], None, order["category"])
@@ -3019,9 +3073,9 @@ def admin_reject_new_request():
         "SELECT order_date, employee_name FROM orders WHERE id = ? AND status = 'requested'", (order_id,)
     ).fetchone()
     db.execute(
-        "UPDATE orders SET status = 'cancelled', resolution = 'new_rejected' "
-        "WHERE id = ? AND status = 'requested'",
-        (order_id,),
+        "UPDATE orders SET status = 'cancelled', resolution = 'new_rejected', "
+        "resolved_by = ?, resolved_at = ? WHERE id = ? AND status = 'requested'",
+        (session.get("admin_name"), now_jst().isoformat(), order_id),
     )
     db.commit()
     flash("新規注文の希望を却下しました。", "success")
