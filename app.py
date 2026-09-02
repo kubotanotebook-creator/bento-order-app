@@ -88,6 +88,9 @@ WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
 # after it, the admin's morning attendance-check process has usually already
 # started, so further changes need to go through 松浦さん/陽介さん directly.
 SAME_DAY_CANCEL_CUTOFF = time(9, 0)
+# 本日分のチケット回収確認がまだ済んでいなければ、管理画面を開いている間だけ
+# 気づけるようこの時刻以降に警告バーを出す(メール等の外部通知はしない)。
+TICKET_COLLECTION_REMINDER_TIME = time(16, 30)
 
 # Links to the how-to manual, shown as a card on the employee dashboard and
 # in the admin nav. An admin can upload a PDF straight from the admin screen
@@ -1951,6 +1954,13 @@ def admin_dashboard():
     today_key, future_dates, past_dates = split_dates_today_future_past(orders_by_date.keys(), today)
     today_order_items = orders_by_date.get(today_key, []) if today_key else []
 
+    # 16:30を過ぎてもチケット回収確認(paid)が済んでいない人がいれば、画面を
+    # 開いている管理者に気づかせる警告バー用。メール等の外部通知はしない。
+    unpaid_today_names = sorted({o["employee_name"] for o in today_order_items if not o["paid"]})
+    show_ticket_reminder_now = (
+        now_jst().time() >= TICKET_COLLECTION_REMINDER_TIME and bool(unpaid_today_names)
+    )
+
     future_weeks = group_dates_by_week(future_dates)
     for week in future_weeks:
         week["date_groups"] = [{"date": d, "day_orders": orders_by_date[d]} for d in week["dates"]]
@@ -2106,6 +2116,9 @@ def admin_dashboard():
         orders=orders,
         cancel_requests=cancel_requests,
         today_order_items=today_order_items,
+        unpaid_today_names=unpaid_today_names,
+        show_ticket_reminder_now=show_ticket_reminder_now,
+        ticket_reminder_time=TICKET_COLLECTION_REMINDER_TIME.strftime("%H:%M"),
         future_weeks=future_weeks,
         past_months=past_months,
         today_orders=today_orders,
@@ -2269,6 +2282,13 @@ def admin_pending():
         return jsonify({"error": "unauthorized"}), 403
     db = get_db()
     pending = pending_cancel_requests(db)
+    today_str = today_jst().isoformat()
+    unpaid_today_names = sorted({
+        r["employee_name"] for r in db.execute(
+            "SELECT employee_name FROM orders WHERE status = 'ordered' AND order_date = ? AND paid = 0",
+            (today_str,),
+        ).fetchall()
+    })
     return jsonify({
         "count": len(pending),
         "overdue": sum(1 for p in pending if p["is_overdue"]),
@@ -2278,6 +2298,9 @@ def admin_pending():
         # reminder on JST, not on whatever timezone the viewer's PC is set to.
         "now": now_jst().strftime("%H:%M"),
         "same_day_cutoff": SAME_DAY_CANCEL_CUTOFF.strftime("%H:%M"),
+        "unpaid_today_count": len(unpaid_today_names),
+        "unpaid_today_names": unpaid_today_names,
+        "ticket_reminder_time": TICKET_COLLECTION_REMINDER_TIME.strftime("%H:%M"),
     })
 
 

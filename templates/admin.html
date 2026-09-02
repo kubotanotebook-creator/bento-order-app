@@ -15,6 +15,14 @@
   <a href="#cancel-requests" class="btn small primary">確認する</a>
 </div>
 
+{# {{ ticket_reminder_time }}を過ぎても本日分のチケット回収確認(paid)が済んで
+   いない人がいる間だけ出る警告。この画面を開いている間しか気づけない
+   (メール等の外部通知はしない)。 #}
+<div id="ticket-attention-bar" class="attention-bar" {% if not show_ticket_reminder_now %}hidden{% endif %}>
+  <span class="attention-text">本日分のチケット回収がまだです(<strong id="ticket-attention-count">{{ unpaid_today_names|length }}</strong>名: <span id="ticket-attention-names">{{ unpaid_today_names|join('・') }}</span>さん)</span>
+  <button type="button" class="btn small primary" id="ticket-attention-link">チケット回収タブを開く</button>
+</div>
+
 {% if cancel_requests %}
 <div class="card" id="cancel-requests">
   <h1>社員からの希望が届いています({{ cancel_requests|length }}件)</h1>
@@ -992,6 +1000,28 @@
   var lastCount = parseInt(countEl ? countEl.textContent : '0', 10) || 0;
   var notifiedCutoffOn = null;   // 9:00リマインドを送った日付(1日1回に抑える)
 
+  var ticketBar = document.getElementById('ticket-attention-bar');
+  var ticketCountEl = document.getElementById('ticket-attention-count');
+  var ticketNamesEl = document.getElementById('ticket-attention-names');
+  var ticketLink = document.getElementById('ticket-attention-link');
+  if (ticketLink) {
+    ticketLink.addEventListener('click', function () {
+      var ordersTab = document.querySelector('.tab-btn[data-tab="orders"]');
+      if (ordersTab) ordersTab.click();
+      var todayToggle = document.querySelector('.date-toggle-btn.is-today');
+      if (todayToggle) todayToggle.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+  function renderTicket(data) {
+    if (!ticketBar) return;
+    var show = data.show !== undefined
+      ? data.show
+      : (data.now >= data.ticket_reminder_time && data.unpaid_today_count > 0);
+    ticketBar.hidden = !show;
+    if (ticketCountEl) ticketCountEl.textContent = data.unpaid_today_count;
+    if (ticketNamesEl) ticketNamesEl.textContent = data.unpaid_today_names.join('・');
+  }
+
   function canNotify() {
     return ('Notification' in window) && Notification.permission === 'granted';
   }
@@ -1022,6 +1052,7 @@
       .then(function (data) {
         if (!data) return;
         render(data);
+        renderTicket(data);
 
         if (data.count > lastCount) {
           notify(
@@ -1075,6 +1106,11 @@
     count: lastCount,
     overdue: {{ cancel_requests|selectattr('is_overdue')|list|length }},
     today: {{ cancel_requests|selectattr('is_today')|list|length }}
+  });
+  renderTicket({
+    show: {{ 'true' if show_ticket_reminder_now else 'false' }},
+    unpaid_today_count: {{ unpaid_today_names|length }},
+    unpaid_today_names: {{ unpaid_today_names|tojson }}
   });
 })();
 </script>
