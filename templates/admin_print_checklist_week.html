@@ -27,67 +27,87 @@
     cursor: pointer; background: #d9480f; color: #fff;
   }
   .btn.secondary { background: #555; }
-  .sheet { max-width: 900px; margin: 0 auto; }
-  .sheet h1 { font-size: 1.05rem; margin: 0 0 2px; }
-  .sheet .sub { color: #555; margin-bottom: 4px; font-size: 0.85rem; }
-
-  .legend {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    font-size: 0.7rem;
-    color: #444;
-    margin-bottom: 3px;
+  /* 幅の制限を外して用紙いっぱいまで使う。余った余白をメニュー名と
+     食数の拡大に回すため。 */
+  .sheet { margin: 0 auto; }
+  /* タイトル・週・凡例を1行にまとめる。A4横1枚に収めるため、
+     表以外が使う縦スペースを最小限にしている。 */
+  .sheet h1 {
+    font-size: 0.95rem; margin: 0 0 3px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   }
-  .legend-note { display: inline-flex; align-items: center; gap: 4px; }
+  .sheet h1 .week-label-inline { font-size: 0.85rem; font-weight: normal; color: #555; }
+  .sheet h2 { font-size: 0.82rem; margin: 0 0 3px; color: #444; }
+
+  /* 区分(行) × 曜日(列) のメニュー早見表。りりてーへFAXする食数と
+     メニュー名を、この1枚から読み上げられるようにするための表。 */
+  table.menu-matrix { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 8px; }
+  table.menu-matrix th, table.menu-matrix td {
+    border: 1px solid #999; padding: 2px 5px; text-align: center; vertical-align: top;
+  }
+  table.menu-matrix th.corner { width: 13%; background: #eee; font-size: 0.72rem; font-weight: 700; color: #444; }
+  table.menu-matrix thead th { padding: 3px 5px; }
+  table.menu-matrix td.cat-row-label {
+    text-align: center; font-weight: 800; font-size: 0.86rem; padding: 5px 3px; white-space: nowrap;
+  }
+  table.menu-matrix td.cat-row-label .cat-emoji { margin-right: 2px; }
+  table.menu-matrix td.cat-row-label.fry { color: #d9480f; }
+  table.menu-matrix td.cat-row-label.nofry { color: #7048e8; }
+  table.menu-matrix td.cat-row-label.veg { color: #2f9e44; }
+  table.menu-matrix td.menu-cell { font-size: 0.68rem; line-height: 1.22; text-align: left; padding-left: 8px; }
+  table.menu-matrix td.menu-cell .mm-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 17px; height: 17px; border-radius: 50%; color: #fff; font-weight: 900; font-size: 0.64rem;
+    margin-bottom: 1px;
+  }
+  table.menu-matrix td.menu-cell.fry .mm-count { background: #d9480f; }
+  table.menu-matrix td.menu-cell.nofry .mm-count { background: #7048e8; }
+  table.menu-matrix td.menu-cell.veg .mm-count { background: #2f9e44; }
+  table.menu-matrix td.menu-cell.empty { color: #bbb; text-align: center; font-size: 0.78rem; }
+  table.menu-matrix tr.total-row td { background: #eee; font-weight: 800; font-size: 0.82rem; }
+  table.menu-matrix tr.total-row td.cat-row-label { color: #222; }
+
+  .wk-date-inline { font-size: 0.95rem; font-weight: 700; }
+  .wk-date-inline .mmdd-label { font-size: 0.72rem; font-weight: 500; color: #555; margin-left: 3px; }
+
+  .legend-note {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 0.68rem; font-weight: normal; color: #444;
+  }
   .note {
-    font-size: 0.66rem;
+    font-size: 0.64rem;
     color: #8a5200;
     background: #fff4e5;
     border-radius: 6px;
-    padding: 3px 6px;
-    margin-bottom: 5px;
+    padding: 2px 6px;
+    margin: 0 0 5px;
   }
 
   table.matrix { width: 100%; border-collapse: collapse; table-layout: fixed; }
   table.matrix th, table.matrix td {
     border: 1px solid #999;
-    padding: 2px 3px;
+    padding: 1px 3px;
     text-align: center;
     font-size: 0.78rem;
   }
   table.matrix th { background: #eee; }
-  table.matrix .wk-label { font-size: 1rem; font-weight: 700; display: block; }
-  table.matrix .mmdd-label { font-size: 0.72rem; color: #555; }
+  /* 受け取りチェック表の見出しは曜日だけ。日付・食数・メニューは上の
+     早見表に出ているので、ここで繰り返すと行を無駄に使うだけになる。 */
+  table.matrix thead th:not(.name-col) { font-size: 0.9rem; font-weight: 700; padding: 2px 3px; }
   table.matrix td.name-col, table.matrix th.name-col {
     text-align: left;
     padding-left: 8px;
     width: 13%;
   }
   table.matrix td.name-col {
-    font-size: 1rem;
+    /* 行の高さは実質この氏名セルの行送りで決まる。1remだと1行あたり
+       約6px余分に食い、10人でA4横1枚に収まらなくなるため詰めている。 */
+    font-size: 0.88rem;
+    line-height: 1.25;
     font-weight: 700;
     overflow-wrap: anywhere;
   }
-  table.matrix .day-count { font-size: 0.68rem; color: #666; font-weight: normal; }
-  .day-summary { margin-top: 3px; display: flex; justify-content: center; gap: 2px; flex-wrap: nowrap; }
-  /* Actual dish names under the category badges — without this, whoever's
-     handing out bento (or checking the sheet after picking theirs up) can
-     only see "フライあり" etc., not what today's フライあり actually is. */
-  .day-menu-names {
-    margin-top: 4px;
-    font-size: 0.58rem;
-    line-height: 1.35;
-    color: #444;
-    font-weight: normal;
-    white-space: normal;
-  }
-  .cat-dot.day-cat-badge {
-    width: auto;
-    padding: 1px 3px;
-    font-size: 0.58rem;
-  }
-  table.matrix tr.blank-row td { height: 28px; }
+  table.matrix tr.blank-row td { height: 20px; }
   /* Zebra striping + a heavier line under every row: rows are wide (5 day
      columns), so it's easy for the eye to slip onto a neighboring person's
      row while checking a box on the right-hand side. The alternating
@@ -99,12 +119,14 @@
 
   .cat-dot {
     display: inline-block;
-    width: 5.6em;
-    padding: 1px 4px;
-    line-height: 1.2;
+    /* 「フライあり/フライなし」の正式名称が入る幅。略さないのは、
+       略すと語頭が同じで有無を取り違えやすくなるため。 */
+    width: 6.4em;
+    padding: 0 4px;
+    line-height: 1.3;
     border-radius: 8px;
     color: #fff;
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     font-weight: 700;
     text-align: center;
     vertical-align: middle;
@@ -116,7 +138,7 @@
   .cat-dot.veg { background: #2f9e44; }
   .pickup-box {
     display: inline-block;
-    width: 15px; height: 15px;
+    width: 13px; height: 13px;
     border: 2px solid #666;
     vertical-align: middle;
     flex-shrink: 0;
@@ -151,41 +173,55 @@
   </div>
 
   <div class="sheet">
-    <h1>お弁当 受け取りチェック表(週間)</h1>
-    <p class="sub">{{ week_label }}</p>
-
-    <div class="legend">
-      {% for code in category_codes %}
-      <span class="cat-dot {{ code }}">{{ category_short[code] }}</span>
-      {% endfor %}
+    {# 区分の凡例は廃止。各バッジが「フライあり」等の正式名称を
+       そのまま表示するようになったので、色と名前の対応表は不要。 #}
+    <h1>お弁当 受け取りチェック表(週間) <span class="week-label-inline">{{ week_label }}</span>
       <span class="legend-note"><span class="pickup-box"></span>受け取り時にここへレ点</span>
-    </div>
+    </h1>
     <p class="note">
-      ※ 締切後に当日追加で頼んだ人がいる場合、その人の行・その日の欄に丸印と区分の頭文字を手書きで追記してください。
-      まだこの表にいない人が当日追加した場合は、一番下の空欄行に氏名を書いて使ってください。
+      ※ 締切後の当日追加は、その人の行・その日の欄に手書きで追記してください。この表にいない人は一番下の空欄行へ。
     </p>
 
+    <h2>📋 メニュー早見表(りりてーへのFAX連絡用)</h2>
+    <table class="menu-matrix">
+      <thead>
+        <tr>
+          <th class="corner">お弁当種類</th>
+          {% for day in day_infos %}
+          <th><span class="wk-date-inline">{{ day.weekday }}<span class="mmdd-label">{{ day.mmdd }}</span></span></th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for code in category_codes %}
+        <tr>
+          <td class="cat-row-label {{ code }}"><span class="cat-emoji">{{ category_emoji[code] }}</span>{{ category_labels[code] }}</td>
+          {% for day in day_infos %}
+            {% if code in day.cats %}
+            <td class="menu-cell {{ code }}">
+              <span class="mm-count">{{ day.cat_counts.get(code, 0) }}</span>
+              {% for dish in day.cats[code].split('/') %}<div>{{ dish.strip() }}</div>{% endfor %}
+            </td>
+            {% else %}
+            <td class="menu-cell empty">—</td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        <tr class="total-row">
+          <td class="cat-row-label">合計</td>
+          {% for day in day_infos %}<td>{{ day.count }}食</td>{% endfor %}
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>✅ 受け取りチェック(氏名ごと)</h2>
     <table class="matrix">
       <thead>
         <tr>
           <th class="name-col">氏名</th>
           {% for day in day_infos %}
-          <th>
-            <span class="wk-label">{{ day.weekday }}</span><span class="mmdd-label">{{ day.mmdd }}</span><br>
-            <span class="day-count">{{ day.count }}食</span>
-            {% if day.cats %}
-            <div class="day-summary">
-              {% for code in category_codes %}
-                {% if day.cat_counts.get(code) %}
-                <span class="cat-dot day-cat-badge {{ code }}">{{ category_print_short[code] }}{{ day.cat_counts[code] }}</span>
-                {% endif %}
-              {% endfor %}
-            </div>
-            <div class="day-menu-names">
-              {% for code in category_codes %}{% if code in day.cats %}{{ category_print_short[code] }}: {{ day.cats[code] }}{% if not loop.last %}<br>{% endif %}{% endif %}{% endfor %}
-            </div>
-            {% endif %}
-          </th>
+          <th>{{ day.weekday }}</th>
           {% endfor %}
         </tr>
       </thead>
@@ -198,7 +234,7 @@
             {% set code = matrix.get(name, {}).get(day.date) %}
             {% if code %}
               <div class="order-cell">
-                <span class="cat-dot {{ code }}">{{ category_short[code] }}</span>
+                <span class="cat-dot {{ code }}">{{ category_labels[code] }}</span>
                 <span class="pickup-box"></span>
               </div>
             {% endif %}

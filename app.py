@@ -83,6 +83,9 @@ CATEGORY_SHORT = {"fry": "フライ有り", "nofry": "なし", "veg": "野菜"}
 # (e.g. "フライ2") into the narrow weekly print sheet's day-column header
 # without the label pushing the number outside the colored badge.
 CATEGORY_PRINT_SHORT = {"fry": "フライ", "nofry": "なし", "veg": "野菜"}
+# 印刷物では色だけに頼らず区別できるよう、区分名に絵文字を添える
+# (白黒コピーで色が飛んでも「フライあり/なし」を取り違えないため)。
+CATEGORY_EMOJI = {"fry": "🍤", "nofry": "🐟", "veg": "🥗"}
 WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
 # 管理画面ログインは共通パスワードなので、誰が承認/却下したかを残すために
 # ログイン時にこの中から選んでもらう。「その他」を選ぶと自由入力になる。
@@ -3342,6 +3345,7 @@ def admin_print_checklist_week():
         category_labels=CATEGORY_LABELS,
         category_short=CATEGORY_SHORT,
         category_print_short=CATEGORY_PRINT_SHORT,
+        category_emoji=CATEGORY_EMOJI,
     )
 
 
