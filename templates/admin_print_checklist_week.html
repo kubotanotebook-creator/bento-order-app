@@ -41,34 +41,39 @@
 
   /* 区分(行) × 曜日(列) のメニュー早見表。りりてーへFAXする食数と
      メニュー名を、この1枚から読み上げられるようにするための表。 */
+  /* 早見表は用紙の2割程度に抑える。5列に分けた状態ではメニュー名を
+     省略せずに1行へ収めるのは物理的に不可能(0.5remでも入らない)ため、
+     2行の折り返しは許したうえで文字と行間を詰めている。 */
   table.menu-matrix { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 8px; }
   table.menu-matrix th, table.menu-matrix td {
-    border: 1px solid #999; padding: 2px 5px; text-align: center; vertical-align: top;
+    border: 1px solid #999; padding: 1px 4px; text-align: center; vertical-align: top;
+    font-size: 0.58rem;
   }
-  table.menu-matrix th.corner { width: 13%; background: #eee; font-size: 0.72rem; font-weight: 700; color: #444; }
-  table.menu-matrix thead th { padding: 3px 5px; }
+  table.menu-matrix th.corner { width: 13%; background: #eee; font-size: 0.66rem; font-weight: 700; color: #444; }
+  table.menu-matrix thead th { padding: 2px 4px; }
   table.menu-matrix td.cat-row-label {
-    text-align: center; font-weight: 800; font-size: 0.86rem; padding: 5px 3px; white-space: nowrap;
+    text-align: center; font-weight: 800; font-size: 0.7rem; padding: 2px; white-space: nowrap;
   }
   table.menu-matrix td.cat-row-label .cat-emoji { margin-right: 2px; }
   table.menu-matrix td.cat-row-label.fry { color: #d9480f; }
   table.menu-matrix td.cat-row-label.nofry { color: #7048e8; }
   table.menu-matrix td.cat-row-label.veg { color: #2f9e44; }
-  table.menu-matrix td.menu-cell { font-size: 0.68rem; line-height: 1.22; text-align: left; padding-left: 8px; }
+  table.menu-matrix td.menu-cell { font-size: 0.58rem; line-height: 1.25; text-align: left; padding-left: 6px; }
+  /* 丸数字はメニュー名と同じ行の先頭に置く(独立した行を作らない) */
   table.menu-matrix td.menu-cell .mm-count {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 17px; height: 17px; border-radius: 50%; color: #fff; font-weight: 900; font-size: 0.64rem;
-    margin-bottom: 1px;
+    width: 13px; height: 13px; border-radius: 50%; color: #fff; font-weight: 900; font-size: 0.54rem;
+    margin-right: 3px; vertical-align: -2px;
   }
   table.menu-matrix td.menu-cell.fry .mm-count { background: #d9480f; }
   table.menu-matrix td.menu-cell.nofry .mm-count { background: #7048e8; }
   table.menu-matrix td.menu-cell.veg .mm-count { background: #2f9e44; }
-  table.menu-matrix td.menu-cell.empty { color: #bbb; text-align: center; font-size: 0.78rem; }
-  table.menu-matrix tr.total-row td { background: #eee; font-weight: 800; font-size: 0.82rem; }
-  table.menu-matrix tr.total-row td.cat-row-label { color: #222; }
+  table.menu-matrix td.menu-cell.empty { color: #bbb; text-align: center; font-size: 0.7rem; }
 
-  .wk-date-inline { font-size: 0.95rem; font-weight: 700; }
-  .wk-date-inline .mmdd-label { font-size: 0.72rem; font-weight: 500; color: #555; margin-left: 3px; }
+  .wk-date-inline { font-size: 0.82rem; font-weight: 700; }
+  .wk-date-inline .mmdd-label { font-size: 0.64rem; font-weight: 500; color: #555; margin-left: 3px; }
+  /* 合計は独立した行を作らず曜日見出しに入れる(1行ぶん節約) */
+  .wk-total-inline { display: block; font-size: 0.62rem; font-weight: 800; color: #444; }
 
   .legend-note {
     display: inline-flex; align-items: center; gap: 4px;
@@ -188,7 +193,7 @@
         <tr>
           <th class="corner">お弁当種類</th>
           {% for day in day_infos %}
-          <th><span class="wk-date-inline">{{ day.weekday }}<span class="mmdd-label">{{ day.mmdd }}</span></span></th>
+          <th><span class="wk-date-inline">{{ day.weekday }}<span class="mmdd-label">{{ day.mmdd }}</span></span><span class="wk-total-inline">計{{ day.count }}食</span></th>
           {% endfor %}
         </tr>
       </thead>
@@ -198,20 +203,13 @@
           <td class="cat-row-label {{ code }}"><span class="cat-emoji">{{ category_emoji[code] }}</span>{{ category_labels[code] }}</td>
           {% for day in day_infos %}
             {% if code in day.cats %}
-            <td class="menu-cell {{ code }}">
-              <span class="mm-count">{{ day.cat_counts.get(code, 0) }}</span>
-              {% for dish in day.cats[code].split('/') %}<div>{{ dish.strip() }}</div>{% endfor %}
-            </td>
+            <td class="menu-cell {{ code }}"><span class="mm-count">{{ day.cat_counts.get(code, 0) }}</span>{{ day.cats[code] }}</td>
             {% else %}
             <td class="menu-cell empty">—</td>
             {% endif %}
           {% endfor %}
         </tr>
         {% endfor %}
-        <tr class="total-row">
-          <td class="cat-row-label">合計</td>
-          {% for day in day_infos %}<td>{{ day.count }}食</td>{% endfor %}
-        </tr>
       </tbody>
     </table>
 
