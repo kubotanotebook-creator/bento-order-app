@@ -550,8 +550,12 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .payroll-headline .summary-row { margin: 6px 0 0; }
 .payroll-amount { color: #b23b0c; }
 .payroll-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* 受け渡し日を氏名の右に添える(印刷画面と同じ形)。1締めあたり
+   多くても2回なので、氏名と同じ行に収まる。 */
+.issued-dates { margin-left: 8px; font-size: 0.78rem; color: #777; font-weight: normal; }
 @media (max-width: 600px) {
   .payroll-table .num { text-align: right; }
+  .issued-dates { margin-left: 5px; font-size: 0.72rem; }
 }
 
 .summary-block { border-top: 1px dashed #e2e4e8; padding-top: 10px; margin-top: 10px; }

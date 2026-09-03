@@ -293,8 +293,8 @@
       <button type="submit" class="btn primary">10枚渡した記録を保存</button>
     </form>
     {% if ticket_issuances %}
-    <div class="table-scroll" style="margin-top:12px;">
-    <table class="table">
+    <div class="table-scroll table-scroll-grid" style="margin-top:12px;">
+    <table class="table table-keep-grid">
       <thead><tr><th>氏名</th><th>日付</th><th>枚数</th><th>操作</th></tr></thead>
       <tbody>
         {% for t in ticket_issuances %}
@@ -350,7 +350,7 @@
             <tbody>
               {% for e in cyc.employees %}
               <tr>
-                <td data-label="氏名">{{ e.name }}</td>
+                <td data-label="氏名">{{ e.name }}<span class="issued-dates">({{ e.dates|join('、') }})</span></td>
                 <td data-label="受け渡し冊数" class="num">{{ e.booklets }}冊</td>
                 <td data-label="天引き額" class="num payroll-amount">¥{{ e.total }}</td>
               </tr>
