@@ -135,13 +135,17 @@
   {% if today_category_groups %}
   <div class="fax-diff-row">
     {% for g in today_category_groups %}
-    <div class="fax-diff-box {{ 'is-changed' if g.diff != 0 }}">
+    <div class="fax-diff-box">
+      {% if g.diff != 0 %}
+      <span class="fax-diff-badge {{ 'increase' if g.diff > 0 else 'decrease' }}">{{ '+' if g.diff > 0 else '−' }}{{ (g.diff if g.diff > 0 else -g.diff) }}</span>
+      {% endif %}
       <div class="fax-diff-label">{{ g.label }}</div>
       <div class="fax-diff-current">{{ g.current_count }}食</div>
       {% if g.diff != 0 %}
-        <div class="fax-diff-delta">FAX時点{{ g.fax_count }}食({{ '▲' if g.diff > 0 else '▼' }}{{ (g.diff if g.diff > 0 else -g.diff) }})</div>
+        <div class="fax-diff-sub">FAX時点{{ g.fax_count }}食</div>
+        <div class="fax-diff-action {{ 'increase' if g.diff > 0 else 'decrease' }}">📞 {{ g.label }}{{ (g.diff if g.diff > 0 else -g.diff) }}食{{ '追加' if g.diff > 0 else '減' }}の連絡が必要です</div>
       {% else %}
-        <div class="fax-diff-delta muted">FAXと変化なし</div>
+        <div class="fax-diff-sub muted">FAXと変化なし</div>
       {% endif %}
     </div>
     {% endfor %}

@@ -213,16 +213,42 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
    readable in the few seconds before the 9:00 cutoff. */
 .fax-diff-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 .fax-diff-box {
+  position: relative;
   flex: 1 1 140px;
   background: #f4f1ec;
   border-radius: 10px;
   padding: 10px 14px;
 }
-.fax-diff-box.is-changed { background: #fff4e0; border: 1px solid #f0c869; }
 .fax-diff-label { font-size: 0.8rem; color: #7a7168; font-weight: 700; }
 .fax-diff-current { font-size: 1.4rem; font-weight: 800; color: #2b2420; }
-.fax-diff-delta { font-size: 0.8rem; color: #8a5a00; }
-.fax-diff-delta.muted { color: #888; }
+.fax-diff-sub { font-size: 0.8rem; color: #aaa; margin-top: 2px; }
+.fax-diff-sub.muted { color: #888; }
+/* 差分バッジ: カードの角から飛び出させて、数字を読まなくても
+   「ここが違う」と一目で分かるようにする(D9480Fは既存ブランドカラー流用)。 */
+.fax-diff-badge {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.fax-diff-badge.increase { background: #d9480f; box-shadow: 0 2px 6px rgba(217, 72, 15, 0.35); }
+.fax-diff-badge.decrease { background: #6b7fb0; box-shadow: 0 2px 6px rgba(107, 127, 176, 0.35); }
+.fax-diff-action {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #f0c869;
+}
+.fax-diff-action.increase { color: #d9480f; }
+.fax-diff-action.decrease { color: #4a5f96; }
 
 @media (max-width: 480px) {
   .container { padding: 0 12px 60px; }
