@@ -344,8 +344,8 @@
           <a href="{{ url_for('admin_print_payroll', end=cyc.end.isoformat()) }}" target="_blank" class="btn small">この月をA4で印刷</a>
         </div>
         <div class="date-group-body" id="payroll-{{ loop.index }}" hidden>
-          <div class="table-scroll">
-          <table class="table payroll-table">
+          <div class="table-scroll table-scroll-grid">
+          <table class="table table-keep-grid payroll-table">
             <thead><tr><th>氏名</th><th class="num">受け渡し冊数</th><th class="num">天引き額</th></tr></thead>
             <tbody>
               {% for e in cyc.employees %}

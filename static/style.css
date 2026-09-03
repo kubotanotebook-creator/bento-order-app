@@ -266,18 +266,24 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 
 /* Stacked "card" layout for tables on narrow screens, so action buttons
    are never hidden off-screen behind horizontal scroll. */
+/* スマホでは各行をカード状に積み上げる。ただし列が少なく数字を縦に
+   比べたい表(天引き集計など)は .table-keep-grid を付けて対象外にし、
+   印刷画面と同じ表形式のまま表示する。 */
 @media (max-width: 600px) {
   .table-scroll { overflow-x: visible; }
   .table { min-width: 0; }
-  .table thead { display: none; }
-  .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
-  .table tr {
+  .table:not(.table-keep-grid) thead { display: none; }
+  .table:not(.table-keep-grid),
+  .table:not(.table-keep-grid) tbody,
+  .table:not(.table-keep-grid) tr,
+  .table:not(.table-keep-grid) td { display: block; width: 100%; }
+  .table:not(.table-keep-grid) tr {
     border: 1px solid #e2e4e8;
     border-radius: 8px;
     padding: 4px 12px;
     margin-bottom: 10px;
   }
-  .table td {
+  .table:not(.table-keep-grid) td {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -287,16 +293,23 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
     white-space: normal;
     text-align: right;
   }
-  .table td:last-child { border-bottom: none; }
-  .table td::before {
+  .table:not(.table-keep-grid) td:last-child { border-bottom: none; }
+  .table:not(.table-keep-grid) td::before {
     content: attr(data-label);
     font-weight: 600;
     color: #666;
     text-align: left;
     white-space: nowrap;
   }
-  .table td:empty::before { content: none; }
-  .table td[data-label=""]{ justify-content: flex-end; }
+  .table:not(.table-keep-grid) td:empty::before { content: none; }
+  .table:not(.table-keep-grid) td[data-label=""]{ justify-content: flex-end; }
+
+  /* 表形式を保つ表は、狭い画面でも収まるように文字と余白を詰める。
+     万一収まらない場合に備えて横スクロールは残す(切れて読めなくなるより良い)。 */
+  .table-scroll-grid { overflow-x: auto; }
+  .table.table-keep-grid { font-size: 0.82rem; }
+  .table.table-keep-grid th,
+  .table.table-keep-grid td { padding: 7px 6px; white-space: nowrap; }
 }
 
 .week-card .day-row {
