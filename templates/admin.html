@@ -280,47 +280,6 @@
 
 <div class="tab-panel" data-tab="tickets">
   <div class="card">
-    <h1>チケット受け渡し記録</h1>
-    <p class="muted">紙の「チケット受け渡し表」と同じ内容をここにも記録しておくと、社員のダッシュボードに正確な残り枚数・天引き予定額が表示されます。10枚使い切った人に、10枚渡すたびに1件記録してください。取り違え防止のため一覧から選ぶのがおすすめです(受け渡し記録がない・残り0枚の人を上に表示しています)が、まだ注文したことがない人の分は直接入力もできます。</p>
-    <form method="post" action="{{ url_for('admin_issue_tickets') }}" class="grid-form">
-      <label>氏名
-        <input type="text" name="employee_name" list="ticket-employee-list" placeholder="例: 山田 太郎" required>
-        <datalist id="ticket-employee-list">
-          {% for opt in ticket_dropdown_options %}<option value="{{ opt.name }}">{{ opt.label }}</option>{% endfor %}
-        </datalist>
-      </label>
-      <label>渡した日<input type="date" name="issued_at" value="{{ today }}" required></label>
-      <button type="submit" class="btn primary">10枚渡した記録を保存</button>
-    </form>
-    {% if ticket_issuances %}
-    <div class="table-scroll table-scroll-grid" style="margin-top:12px;">
-    <table class="table table-keep-grid">
-      <thead><tr><th>氏名</th><th>日付</th><th>枚数</th><th>操作</th></tr></thead>
-      <tbody>
-        {% for t in ticket_issuances %}
-        <tr>
-          <td data-label="氏名">{{ t.employee_name }}</td>
-          <td data-label="日付">{{ t.issued_at }}
-            {% if t.kind == 'opening' %}<span class="badge closed">開始時の残枚数</span>{% endif %}
-          </td>
-          <td data-label="枚数">{{ t.quantity }}枚</td>
-          <td data-label="操作">
-            <form method="post" action="{{ url_for('admin_delete_ticket_issuance') }}" onsubmit="return confirm('この記録を削除しますか?');">
-              <input type="hidden" name="issuance_id" value="{{ t.id }}">
-              <button type="submit" class="btn small">削除</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% else %}
-    <p class="muted">まだ記録がありません。</p>
-    {% endif %}
-  </div>
-
-  <div class="card">
     <h1>月ごとの天引き集計(給与処理用)</h1>
     <p class="muted">給与締め(16日〜翌15日)ごとに、社員別の受け渡し冊数と天引き額をまとめています。給与処理の際にご利用ください。</p>
     {% if payroll_deduction_cycles %}
@@ -350,7 +309,7 @@
             <tbody>
               {% for e in cyc.employees %}
               <tr>
-                <td data-label="氏名">{{ e.name }}<span class="issued-dates">({{ e.dates|join('、') }})</span></td>
+                <td data-label="氏名">{{ e.name }}<span class="issued-dates">({% for iss in e.issuances %}{{ iss.label }}<form method="post" action="{{ url_for('admin_delete_ticket_issuance') }}" class="issued-date-del" onsubmit="return confirm('{{ e.name }}さんの{{ iss.label }}の受け渡し記録(10枚)を取り消しますか?');"><input type="hidden" name="issuance_id" value="{{ iss.id }}"><button type="submit" title="この受け渡し記録を取り消す">✕</button></form>{% if not loop.last %}、{% endif %}{% endfor %})</span></td>
                 <td data-label="受け渡し冊数" class="num">{{ e.booklets }}冊</td>
                 <td data-label="天引き額" class="num payroll-amount">¥{{ e.total }}</td>
               </tr>
@@ -367,6 +326,22 @@
   </div>
 
   <div class="card">
+    <h1>チケット受け渡し記録</h1>
+    <p class="muted">紙の「チケット受け渡し表」と同じ内容をここにも記録しておくと、社員のダッシュボードに正確な残り枚数・天引き予定額が表示されます。10枚使い切った人に、10枚渡すたびに1件記録してください。取り違え防止のため一覧から選ぶのがおすすめです(受け渡し記録がない・残り0枚の人を上に表示しています)が、まだ注文したことがない人の分は直接入力もできます。</p>
+    <p class="muted">登録した記録は、上の「月ごとの天引き集計」の氏名の横に日付として表示されます。間違えて登録したときは、そこの日付の「✕」から取り消せます。</p>
+    <form method="post" action="{{ url_for('admin_issue_tickets') }}" class="grid-form">
+      <label>氏名
+        <input type="text" name="employee_name" list="ticket-employee-list" placeholder="例: 山田 太郎" required>
+        <datalist id="ticket-employee-list">
+          {% for opt in ticket_dropdown_options %}<option value="{{ opt.name }}">{{ opt.label }}</option>{% endfor %}
+        </datalist>
+      </label>
+      <label>渡した日<input type="date" name="issued_at" value="{{ today }}" required></label>
+      <button type="submit" class="btn primary">10枚渡した記録を保存</button>
+    </form>
+  </div>
+
+  <div class="card">
     <h1>運用開始時の残枚数を登録(最初に1回だけ)</h1>
     <p class="muted">
       アプリを使い始める時点で、すでに配ってあるチケットの<strong>残り枚数</strong>をここで登録します。
@@ -375,7 +350,8 @@
     </p>
     <p class="muted">
       <strong>この登録は天引きの対象になりません。</strong>すでに紙の運用で精算済みのぶんだからです。
-      8月16日以降に新しく渡した冊は、上の「10枚渡した記録」に実際の日付で登録してください(そちらは天引きに反映されます)。
+      そのため上の「月ごとの天引き集計」には出てきません。登録内容の確認と取り消しはこのカードの下で行えます。
+      8月16日以降に新しく渡した冊は、上の「チケット受け渡し記録」に実際の日付で登録してください(そちらは天引きに反映されます)。
     </p>
     <form method="post" action="{{ url_for('admin_set_opening_tickets') }}" class="grid-form">
       <label>氏名
@@ -387,7 +363,32 @@
       </label>
       <button type="submit" class="btn primary">残り枚数を登録</button>
     </form>
-    <p class="muted" style="margin-bottom:0;">まだアプリを使ったことがない人の分も、氏名を直接入力して登録できます。</p>
+    <p class="muted">まだアプリを使ったことがない人の分も、氏名を直接入力して登録できます。</p>
+    {% if opening_issuances %}
+    <h2 style="font-size:0.95rem; margin:16px 0 6px;">登録済みの残枚数({{ opening_issuances|length }}件)</h2>
+    <div class="table-scroll table-scroll-grid">
+    <table class="table table-keep-grid">
+      <thead><tr><th>氏名</th><th>基準日</th><th class="num">残り枚数</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for t in opening_issuances %}
+        <tr>
+          <td data-label="氏名">{{ t.employee_name }}</td>
+          <td data-label="基準日">{{ t.issued_at }}</td>
+          <td data-label="残り枚数" class="num">{{ t.quantity }}枚</td>
+          <td data-label="操作">
+            <form method="post" action="{{ url_for('admin_delete_ticket_issuance') }}" onsubmit="return confirm('{{ t.employee_name }}さんの開始時残枚数({{ t.issued_at }})の登録を削除しますか?');">
+              <input type="hidden" name="issuance_id" value="{{ t.id }}">
+              <button type="submit" class="btn small">削除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="muted" style="margin-bottom:0;">まだ登録がありません。</p>
+    {% endif %}
   </div>
 </div>
 

@@ -860,9 +860,11 @@ def compute_payroll_deduction_cycles(db, price_per_booklet):
         issued = date.fromisoformat(row["issued_at"])
         start, end = payroll_cycle(issued)
         cyc = payroll_cycles_by_key.setdefault((start, end), {})
-        emp = cyc.setdefault(row["employee_name"], {"booklets": 0, "dates": []})
+        emp = cyc.setdefault(row["employee_name"], {"booklets": 0, "issuances": []})
         emp["booklets"] += 1
-        emp["dates"].append(f"{issued.month}/{issued.day}")
+        # id も持たせておくのは、管理画面で受け渡し記録を1件ずつ取り消せる
+        # ようにするため(以前は別テーブルにあった削除機能をここへ統合した)。
+        emp["issuances"].append({"id": row["id"], "label": f"{issued.month}/{issued.day}"})
 
     payroll_deduction_cycles = []
     for (cyc_start, cyc_end) in sorted(payroll_cycles_by_key.keys(), reverse=True):
@@ -872,7 +874,7 @@ def compute_payroll_deduction_cycles(db, price_per_booklet):
                 "name": name,
                 "booklets": info["booklets"],
                 "total": info["booklets"] * price_per_booklet,
-                "dates": info["dates"],
+                "issuances": info["issuances"],
             }
             for name, info in sorted(emp_map.items())
         ]
@@ -2039,11 +2041,14 @@ def admin_dashboard():
         r["name"] for r in db.execute("SELECT name FROM employees ORDER BY name").fetchall()
     ]
 
-    # Recent ticket handouts, newest first, for the チケット管理 tab's history
-    # table (with a delete button per row to undo a mis-entered date/name).
-    ticket_issuances = [
+    # 運用開始時の残枚数(kind='opening')だけを別に渡す。通常の10枚受け渡し
+    # (kind='issue')は天引き集計の表に日付ごと出しており、そちらから取り消せる
+    # ので、同じ内容を並べた一覧は廃止した。opening は天引き集計に出ない
+    # (精算済みのため)ので、登録カード側で一覧と削除ができるようにする。
+    opening_issuances = [
         dict(r) for r in db.execute(
-            "SELECT * FROM ticket_issuances ORDER BY issued_at DESC, id DESC LIMIT 50"
+            "SELECT * FROM ticket_issuances WHERE kind = 'opening' "
+            "ORDER BY issued_at DESC, id DESC"
         ).fetchall()
     ]
 
@@ -2190,7 +2195,7 @@ def admin_dashboard():
         category_short=CATEGORY_SHORT,
         known_employees=known_employees,
         registered_employees=registered_employees,
-        ticket_issuances=ticket_issuances,
+        opening_issuances=opening_issuances,
         ticket_dropdown_options=ticket_dropdown_options,
         payroll_deduction_cycles=payroll_deduction_cycles,
         proxy_menu_map=proxy_menu_map,

@@ -97,7 +97,7 @@
       <tbody>
         {% for e in cyc.employees %}
         <tr>
-          <td>{{ e.name }}<span class="issued-dates">({{ e.dates|join('、') }})</span></td>
+          <td>{{ e.name }}<span class="issued-dates">({{ e.issuances|map(attribute='label')|join('、') }})</span></td>
           <td class="num">{{ e.booklets }}冊</td>
           <td class="num payroll-amount">¥{{ e.total }}</td>
         </tr>
