@@ -1,0 +1,141 @@
+{# りりてー宛のFAX注文用紙。先方の様式(いただいた用紙)をそのまま再現し、
+   実際に使っている「中」の行にだけ食数を入れる。小/大/おかずの行は空欄で
+   残す — 見慣れた紙と同じ見た目を保ち、例外注文を手書きで足せるように。 #}
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>お弁当注文FAX_{{ monday }}</title>
+<style>
+  @page { size: A4 portrait; margin: 14mm 12mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
+    color: #000; margin: 0;
+  }
+  .no-print { margin-bottom: 12px; }
+  .no-print a, .no-print button {
+    display: inline-block; padding: 8px 14px; margin-right: 8px;
+    border: 1px solid #ccc; border-radius: 6px; background: #eee;
+    text-decoration: none; color: #333; font-size: 0.9rem; cursor: pointer;
+  }
+  .no-print button.primary { background: #d9480f; color: #fff; border-color: #d9480f; }
+  @media print { .no-print { display: none; } }
+
+  /* --- ヘッダー(先方の用紙の並びに合わせる) --- */
+  .head { display: flex; justify-content: space-between; align-items: flex-start; }
+  .to { font-size: 20pt; font-weight: 700; border-bottom: 3px double #000;
+        padding-bottom: 2px; letter-spacing: 1px; }
+  .from { text-align: right; font-size: 11pt; line-height: 1.7; }
+  .from .shop { font-size: 12pt; }
+  .from .fax { font-weight: 700; }
+  .month { font-size: 16pt; font-weight: 700; margin: 10px 0 4px; }
+
+  /* --- 本体の表 --- */
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  td, th { border: 1px solid #000; text-align: center; vertical-align: middle; }
+  /* 種類のまとまり(あり/なし/やさい)は太線で区切る */
+  .group-top td { border-top: 2.2px solid #000; }
+  .kind { width: 34px; font-size: 13pt; font-weight: 700; letter-spacing: 3px;
+          writing-mode: vertical-rl; }
+  .size { width: 40px; font-size: 12pt; font-weight: 700; }
+  .size.small-label { font-size: 8pt; line-height: 1.15; letter-spacing: 0; }
+  .price { width: 52px; font-size: 11.5pt; }
+  .daycol { font-size: 11pt; }
+  thead th { height: 26px; font-size: 12pt; font-weight: 700; }
+  .corner { font-size: 8pt; text-align: left; padding: 2px 4px; position: relative; }
+  .datecell { height: 24px; font-size: 11pt; }
+  .qty { height: 30px; font-size: 15pt; font-weight: 700; }
+  /* 数字が入る「中」の行だけ、実線で仕切って読みやすくする */
+  .blank { height: 30px; }
+  .other-order td { height: 34px; }
+  .other-label { font-size: 10.5pt; line-height: 1.5; }
+  .total td { height: 30px; font-size: 14pt; font-weight: 700; }
+  .total .label { letter-spacing: 6px; }
+  .closed { color: #666; font-size: 9pt; font-weight: 400; }
+  .note { margin-top: 6px; font-size: 9pt; }
+  .sign { margin-top: 10px; text-align: right; font-size: 12pt; }
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <button type="button" class="primary" onclick="window.print()">🖨 印刷する</button>
+  <a href="{{ url_for('admin_dashboard') }}">管理画面に戻る</a>
+  <span style="font-size:0.85rem; color:#666;">
+    印刷したらFAX（りりてー様 072-633-3480）へ送ってください。
+  </span>
+</div>
+
+<div class="head">
+  <div class="to">プリマール(株) 様⇒</div>
+  <div class="from">
+    <div class="shop">おべんとうりりてー　TEL：072-637-1003</div>
+    <div class="fax">FAX専用：072-633-3480</div>
+  </div>
+</div>
+
+<div class="month">{{ month_label }}</div>
+
+<table>
+  <colgroup>
+    <col style="width:34px"><col style="width:40px"><col style="width:52px">
+    {% for d in day_infos %}<col>{% endfor %}
+  </colgroup>
+  <thead>
+    <tr>
+      <th colspan="3" class="corner">弁当＼日にち</th>
+      {% for d in day_infos %}<th>{{ d.weekday }}</th>{% endfor %}
+    </tr>
+    <tr>
+      <td colspan="3" class="corner"></td>
+      {% for d in day_infos %}<td class="datecell">{{ d.mmdd }}</td>{% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {# 行の並びは先方の用紙どおり。数量を入れるのは「中」だけ。 #}
+    {% set groups = [
+      ('あり', 'fry',   [('小','570'), ('中','600'), ('大','700'), ('おかず','530')]),
+      ('なし', 'nofry', [('小','570'), ('中','600'), ('大','700'), ('おかず','530')]),
+      ('やさい', 'veg', [('中','600'), ('大','700'), ('おかず','550')]),
+    ] %}
+    {% for kind_label, code, sizes in groups %}
+      {% for size, price in sizes %}
+      <tr class="{{ 'group-top' if loop.first }}">
+        {% if loop.first %}
+        <td class="kind" rowspan="{{ sizes|length }}">{{ kind_label }}</td>
+        {% endif %}
+        <td class="size {{ 'small-label' if size == 'おかず' }}">{{ size }}</td>
+        <td class="price">{{ price }}</td>
+        {% for d in day_infos %}
+          {% if size == '中' %}
+          <td class="qty">
+            {%- if d.closed %}<span class="closed">休</span>
+            {%- else %}{{ counts[code][d.date] or 0 }}{% endif -%}
+          </td>
+          {% else %}
+          <td class="blank"></td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    {% endfor %}
+
+    <tr class="group-top other-order">
+      <td colspan="3" class="other-label">ひがわり以外<br>のご注文</td>
+      {% for d in day_infos %}<td></td>{% endfor %}
+    </tr>
+    <tr class="group-top total">
+      <td colspan="3" class="label">合計</td>
+      {% for d in day_infos %}
+      <td>{% if d.closed %}<span class="closed">休</span>{% else %}{{ d.total }}{% endif %}</td>
+      {% endfor %}
+    </tr>
+  </tbody>
+</table>
+
+<div class="note">※変更・キャンセルは当日朝10:00までにお願いいたします。</div>
+<div class="sign">宜しくお願いいたします。{% if admin_name %}　{{ admin_name }}{% endif %}</div>
+
+</body>
+</html>

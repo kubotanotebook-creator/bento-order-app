@@ -839,8 +839,24 @@
 
 <div class="tab-panel" data-tab="print">
   <div class="card">
+    <h1>りりてー様へのFAX注文用紙</h1>
+    <p class="muted">りりてー様の注文用紙と同じ様式で、食数を入れた状態で印刷します。<strong>印刷してそのままFAX（072-633-3480）に送れます。</strong>手書きで書き写す必要はありません。</p>
+    <div class="dashboard-links" style="margin-bottom:14px;">
+      <a href="{{ url_for('admin_print_fax', monday=next_week_monday) }}" target="_blank" class="btn primary dashboard-link">📠 来週分のFAX用紙を印刷</a>
+      <a href="{{ url_for('admin_print_fax') }}" target="_blank" class="btn dashboard-link">今週分のFAX用紙を印刷</a>
+    </div>
+    <form method="get" action="{{ url_for('admin_print_fax') }}" target="_blank" class="inline-form">
+      <label style="margin-bottom:0;">週を指定して印刷
+        <input type="date" name="monday" value="{{ check_date }}">
+      </label>
+      <button type="submit" class="btn small">その週のFAX用紙を印刷</button>
+    </form>
+    <p class="muted" style="margin-top:10px; margin-bottom:0;">数字が入るのは実際に使っている「中(600円)」の行だけです。小・大・おかずの行は空欄のままなので、例外的な注文は手書きで足してください。定休日の列は「休」と表示されます。</p>
+  </div>
+
+  <div class="card">
     <h1>弁当チェック表印刷</h1>
-    <p class="muted">お弁当受け取り時に紙にレ点をつけるための一覧です。区分ごとの食数・メニュー名も載っているので、りりてーへのFAX連絡はこの印刷画面を見て行ってください。週1枚まとめて印刷しておき、締切後の当日追加分はその紙に手書きで追記する運用がおすすめです。</p>
+    <p class="muted">お弁当受け取り時に紙にレ点をつけるための一覧です。週1枚まとめて印刷しておき、締切後の当日追加分はその紙に手書きで追記する運用がおすすめです。<strong>りりてー様への注文は、上の「FAX注文用紙」を印刷して送ってください。</strong></p>
     <div class="dashboard-links" style="margin-bottom:14px;">
       <a href="{{ url_for('admin_print_checklist_week') }}" target="_blank" class="btn primary dashboard-link">今週分を印刷</a>
       <a href="{{ url_for('admin_print_checklist_week', monday=next_week_monday) }}" target="_blank" class="btn primary dashboard-link">来週分を印刷</a>

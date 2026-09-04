@@ -3354,6 +3354,70 @@ def admin_print_checklist_week():
     )
 
 
+@app.route("/admin/print-fax")
+def admin_print_fax():
+    """りりてー宛のFAX注文用紙を、そのまま送れる形で埋めて印刷する。
+
+    これまでは白紙の様式に手書きで食数を書いてFAXしていた。様式(行=弁当の
+    種類とサイズ、列=月〜金)は先方のものをそのまま再現し、数字が入るのは
+    実際に使っている「中」の行だけ。小/大/おかずの行は空欄のまま残す —
+    先方が見慣れた紙と同じ見た目を保つためと、例外的な注文を手書きで足せる
+    余地を残すため。
+    """
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+
+    db = get_db()
+    monday_param = request.args.get("monday")
+    try:
+        base_date = date.fromisoformat(monday_param) if monday_param else today_jst()
+    except ValueError:
+        base_date = today_jst()
+    monday = week_monday(base_date)
+    days = [monday + timedelta(days=i) for i in range(5)]
+    day_strs = [d.isoformat() for d in days]
+    placeholders = ",".join("?" * len(day_strs))
+
+    rows = db.execute(
+        f"SELECT m.category AS category, o.order_date AS order_date, "
+        f"       SUM(o.quantity) AS n "
+        f"FROM orders o JOIN menu_items m ON o.menu_item_id = m.id "
+        f"WHERE o.order_date IN ({placeholders}) AND o.status = 'ordered' "
+        f"GROUP BY m.category, o.order_date",
+        day_strs,
+    ).fetchall()
+    counts = {code: {d: 0 for d in day_strs} for code in CATEGORY_CODES}
+    for r in rows:
+        if r["category"] in counts:
+            counts[r["category"]][r["order_date"]] = r["n"]
+
+    closed = get_closed_days(db, day_strs[0], day_strs[-1])
+    day_infos = []
+    for d, d_str in zip(days, day_strs):
+        day_infos.append({
+            "date": d_str,
+            "mmdd": f"{d.month}/{d.day}",
+            "weekday": WEEKDAY_JP[d.weekday()],
+            "closed": d_str in closed,
+            "total": sum(counts[c][d_str] for c in CATEGORY_CODES),
+        })
+
+    # 月をまたぐ週は「8〜9月」のように両方を出す(先方の用紙の書き方に合わせる)
+    months = sorted({d.month for d in days})
+    month_label = f"{months[0]}月" if len(months) == 1 else f"{months[0]}〜{months[-1]}月"
+
+    return render_template(
+        "admin_print_fax.html",
+        monday=monday.isoformat(),
+        week_label=build_week_label(monday),
+        month_label=month_label,
+        day_infos=day_infos,
+        counts=counts,
+        category_codes=CATEGORY_CODES,
+        admin_name=session.get("admin_name") or "",
+    )
+
+
 @app.route("/admin/print-payroll")
 def admin_print_payroll():
     """A4-friendly sheet for one 16th-to-15th payroll cycle: per-employee
