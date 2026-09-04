@@ -1,19 +1,23 @@
-{# りりてー宛のFAX注文用紙。先方の様式(いただいた用紙)をそのまま再現し、
-   実際に使っている「中」の行にだけ食数を入れる。小/大/おかずの行は空欄で
-   残す — 見慣れた紙と同じ見た目を保ち、例外注文を手書きで足せるように。 #}
+{# りりてー様のFAX注文用紙(いただいた白紙をスキャンしたもの)に、食数だけを
+   重ねて印刷する。様式そのものが先方の原本なので、罫線や文言の再現ズレが
+   起きない。数字を入れるのは実際に使っている「中」の行と合計だけ。
+
+   位置は用紙画像に対する％で指定している。用紙は A4 ちょうど(200dpi で
+   1654x2340px)なので、画像を紙幅いっぱいに置けば実寸で一致する。
+
+   背景画像ではなく <img> で置いているのは、ブラウザの印刷設定「背景の
+   グラフィック」が既定でオフのことが多く、背景だと罫線が印刷されないため。 #}
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <title>お弁当注文FAX_{{ monday }}</title>
 <style>
-  @page { size: A4 portrait; margin: 10mm 10mm; }
+  @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
-  body {
-    font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
-    color: #000; margin: 0;
-  }
-  .no-print { margin-bottom: 12px; }
+  body { margin: 0; font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif; }
+
+  .no-print { padding: 12px 16px; background: #f5f6f8; border-bottom: 1px solid #ddd; }
   .no-print a, .no-print button {
     display: inline-block; padding: 8px 14px; margin-right: 8px;
     border: 1px solid #ccc; border-radius: 6px; background: #eee;
@@ -22,40 +26,25 @@
   .no-print button.primary { background: #d9480f; color: #fff; border-color: #d9480f; }
   @media print { .no-print { display: none; } }
 
-  /* --- ヘッダー(先方の用紙の並びに合わせる) --- */
-  .head { display: flex; justify-content: space-between; align-items: flex-start; }
-  .to { font-size: 24pt; font-weight: 700; border-bottom: 3px double #000;
-        padding-bottom: 2px; letter-spacing: 2px; }
-  .from { text-align: right; font-size: 12pt; line-height: 1.8; }
-  .from .shop { font-size: 13pt; }
-  .from .fax { font-weight: 700; }
-  .month { font-size: 19pt; font-weight: 700; margin: 12px 0 6px; }
-
-  /* --- 本体の表 ---
-     先方の用紙はA4いっぱいに枠が広がっているので、行の高さを実寸に合わせて
-     大きく取る。FAXは解像度が低く、細かい罫線や小さい数字はつぶれるため、
-     余白を残すより枠と数字を大きくしたほうが読み違いが起きにくい。 */
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  td, th { border: 1.2px solid #000; text-align: center; vertical-align: middle; }
-  /* 種類のまとまり(あり/なし/やさい)は太線で区切る */
-  .group-top td { border-top: 2.5px solid #000; }
-  .kind { width: 40px; font-size: 16pt; font-weight: 700; letter-spacing: 6px;
-          writing-mode: vertical-rl; }
-  .size { width: 46px; font-size: 15pt; font-weight: 700; }
-  .size.small-label { font-size: 10pt; line-height: 1.15; letter-spacing: 0; }
-  .price { width: 60px; font-size: 14pt; }
-  thead th { height: 34px; font-size: 15pt; font-weight: 700; }
-  .corner { font-size: 9pt; text-align: left; padding: 2px 4px; }
-  .datecell { height: 30px; font-size: 13pt; }
-  .qty { height: 54px; font-size: 26pt; font-weight: 700; }
-  .blank { height: 54px; }
-  .other-order td { height: 66px; }
-  .other-label { font-size: 13pt; line-height: 1.6; }
-  .total td { height: 50px; font-size: 20pt; font-weight: 700; }
-  .total .label { letter-spacing: 8px; }
-  .closed { color: #444; font-size: 13pt; font-weight: 400; }
-  .note { margin-top: 8px; font-size: 10.5pt; }
-  .sign { margin-top: 14px; text-align: right; font-size: 15pt; }
+  /* 用紙1枚ぶんの箱。中の位置指定はすべてこの箱に対する％。 */
+  .sheet { position: relative; width: 210mm; height: 297mm; margin: 0 auto; }
+  .sheet img { display: block; width: 100%; height: 100%; }
+  .cell {
+    position: absolute; transform: translate(-50%, -50%);
+    font-weight: 700; color: #000; white-space: nowrap;
+  }
+  .qty { font-size: 30pt; }
+  .total { font-size: 26pt; }
+  .date { font-size: 15pt; font-weight: 600; }
+  .month { font-size: 20pt; font-weight: 700; }
+  .closed { font-size: 15pt; font-weight: 600; color: #333; }
+  .sign {
+    position: absolute; right: 6%; bottom: 3.2%; font-size: 14pt; font-weight: 600;
+  }
+  @media print {
+    body { background: #fff; }
+    .sheet { margin: 0; }
+  }
 </style>
 </head>
 <body>
@@ -68,75 +57,37 @@
   </span>
 </div>
 
-<div class="head">
-  <div class="to">プリマール(株) 様⇒</div>
-  <div class="from">
-    <div class="shop">おべんとうりりてー　TEL：072-637-1003</div>
-    <div class="fax">FAX専用：072-633-3480</div>
-  </div>
-</div>
+<div class="sheet">
+  <img src="{{ url_for('static', filename='fax_form.png') }}" alt="お弁当注文用紙">
 
-<div class="month">{{ month_label }}</div>
+  {# 年月(用紙左上の「月」の左側) #}
+  <span class="cell month" style="left:{{ layout.month.x }}%; top:{{ layout.month.y }}%;">{{ month_label }}</span>
 
-<table>
-  <colgroup>
-    <col style="width:34px"><col style="width:40px"><col style="width:52px">
-    {% for d in day_infos %}<col>{% endfor %}
-  </colgroup>
-  <thead>
-    <tr>
-      <th colspan="3" class="corner">弁当＼日にち</th>
-      {% for d in day_infos %}<th>{{ d.weekday }}</th>{% endfor %}
-    </tr>
-    <tr>
-      <td colspan="3" class="corner"></td>
-      {% for d in day_infos %}<td class="datecell">{{ d.mmdd }}</td>{% endfor %}
-    </tr>
-  </thead>
-  <tbody>
-    {# 行の並びは先方の用紙どおり。数量を入れるのは「中」だけ。 #}
-    {% set groups = [
-      ('あり', 'fry',   [('小','570'), ('中','600'), ('大','700'), ('おかず','530')]),
-      ('なし', 'nofry', [('小','570'), ('中','600'), ('大','700'), ('おかず','530')]),
-      ('やさい', 'veg', [('中','600'), ('大','700'), ('おかず','550')]),
-    ] %}
-    {% for kind_label, code, sizes in groups %}
-      {% for size, price in sizes %}
-      <tr class="{{ 'group-top' if loop.first }}">
-        {% if loop.first %}
-        <td class="kind" rowspan="{{ sizes|length }}">{{ kind_label }}</td>
-        {% endif %}
-        <td class="size {{ 'small-label' if size == 'おかず' }}">{{ size }}</td>
-        <td class="price">{{ price }}</td>
-        {% for d in day_infos %}
-          {% if size == '中' %}
-          <td class="qty">
-            {%- if d.closed %}<span class="closed">休</span>
-            {%- else %}{{ counts[code][d.date] or 0 }}{% endif -%}
-          </td>
-          {% else %}
-          <td class="blank"></td>
-          {% endif %}
-        {% endfor %}
-      </tr>
-      {% endfor %}
+  {# 日にち #}
+  {% for d in day_infos %}
+  <span class="cell date" style="left:{{ layout.cols[loop.index0] }}%; top:{{ layout.rows.date }}%;">{{ d.mmdd }}</span>
+  {% endfor %}
+
+  {# 各区分の「中」の行 #}
+  {% for code in category_codes %}
+    {% for d in day_infos %}
+    <span class="cell {{ 'closed' if d.closed else 'qty' }}"
+          style="left:{{ layout.cols[loop.index0] }}%; top:{{ layout.rows[code] }}%;">
+      {%- if d.closed %}休{% else %}{{ counts[code][d.date] or 0 }}{% endif -%}
+    </span>
     {% endfor %}
+  {% endfor %}
 
-    <tr class="group-top other-order">
-      <td colspan="3" class="other-label">ひがわり以外<br>のご注文</td>
-      {% for d in day_infos %}<td></td>{% endfor %}
-    </tr>
-    <tr class="group-top total">
-      <td colspan="3" class="label">合計</td>
-      {% for d in day_infos %}
-      <td>{% if d.closed %}<span class="closed">休</span>{% else %}{{ d.total }}{% endif %}</td>
-      {% endfor %}
-    </tr>
-  </tbody>
-</table>
+  {# 合計 #}
+  {% for d in day_infos %}
+  <span class="cell {{ 'closed' if d.closed else 'total' }}"
+        style="left:{{ layout.cols[loop.index0] }}%; top:{{ layout.rows.total }}%;">
+    {%- if d.closed %}休{% else %}{{ d.total }}{% endif -%}
+  </span>
+  {% endfor %}
 
-<div class="note">※変更・キャンセルは当日朝10:00までにお願いいたします。</div>
-<div class="sign">宜しくお願いいたします。{% if admin_name %}　{{ admin_name }}{% endif %}</div>
+  {% if admin_name %}<span class="sign">{{ admin_name }}</span>{% endif %}
+</div>
 
 </body>
 </html>

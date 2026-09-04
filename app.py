@@ -3354,6 +3354,24 @@ def admin_print_checklist_week():
     )
 
 
+# static/fax_form.png(りりてー様からいただいた白紙用紙のスキャン)のどこに
+# 数字を重ねるか。用紙画像に対する％で、罫線の検出結果から機械的に求めた値。
+# 用紙を差し替えたときはここも取り直すこと。
+FAX_FORM_LAYOUT = {
+    "cols": [23.815, 40.006, 56.197, 72.388, 88.579],   # 月〜金の列の中心
+    "rows": {
+        "fry": 22.981,      # 「あり」の中(600)の行
+        "nofry": 43.627,    # 「なし」の中(600)の行
+        "veg": 59.195,      # 「やさい」の中(600)の行
+        "total": 89.872,    # 合計の行
+        "date": 13.718,     # 日にちの行
+    },
+    # 左上の年月。用紙に印字された「月」の字と重ならないよう左に寄せる
+    # (用紙は「8〜9」と書いて既存の「月」につなげる書き方になっている)
+    "month": {"x": 4.6, "y": 9.6},
+}
+
+
 @app.route("/admin/print-fax")
 def admin_print_fax():
     """りりてー宛のFAX注文用紙を、そのまま送れる形で埋めて印刷する。
@@ -3402,9 +3420,10 @@ def admin_print_fax():
             "total": sum(counts[c][d_str] for c in CATEGORY_CODES),
         })
 
-    # 月をまたぐ週は「8〜9月」のように両方を出す(先方の用紙の書き方に合わせる)
+    # 用紙には「月」の字が既に印字されているので、こちらは数字だけを重ねる。
+    # 月をまたぐ週は「8〜9」と書いて「月」につなげる(先方の用紙の書き方どおり)。
     months = sorted({d.month for d in days})
-    month_label = f"{months[0]}月" if len(months) == 1 else f"{months[0]}〜{months[-1]}月"
+    month_label = f"{months[0]}" if len(months) == 1 else f"{months[0]}〜{months[-1]}"
 
     return render_template(
         "admin_print_fax.html",
@@ -3414,6 +3433,7 @@ def admin_print_fax():
         day_infos=day_infos,
         counts=counts,
         category_codes=CATEGORY_CODES,
+        layout=FAX_FORM_LAYOUT,
         admin_name=session.get("admin_name") or "",
     )
 
