@@ -7,7 +7,7 @@
 <meta charset="UTF-8">
 <title>お弁当注文FAX_{{ monday }}</title>
 <style>
-  @page { size: A4 portrait; margin: 14mm 12mm; }
+  @page { size: A4 portrait; margin: 10mm 10mm; }
   * { box-sizing: border-box; }
   body {
     font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
@@ -24,37 +24,38 @@
 
   /* --- ヘッダー(先方の用紙の並びに合わせる) --- */
   .head { display: flex; justify-content: space-between; align-items: flex-start; }
-  .to { font-size: 20pt; font-weight: 700; border-bottom: 3px double #000;
-        padding-bottom: 2px; letter-spacing: 1px; }
-  .from { text-align: right; font-size: 11pt; line-height: 1.7; }
-  .from .shop { font-size: 12pt; }
+  .to { font-size: 24pt; font-weight: 700; border-bottom: 3px double #000;
+        padding-bottom: 2px; letter-spacing: 2px; }
+  .from { text-align: right; font-size: 12pt; line-height: 1.8; }
+  .from .shop { font-size: 13pt; }
   .from .fax { font-weight: 700; }
-  .month { font-size: 16pt; font-weight: 700; margin: 10px 0 4px; }
+  .month { font-size: 19pt; font-weight: 700; margin: 12px 0 6px; }
 
-  /* --- 本体の表 --- */
+  /* --- 本体の表 ---
+     先方の用紙はA4いっぱいに枠が広がっているので、行の高さを実寸に合わせて
+     大きく取る。FAXは解像度が低く、細かい罫線や小さい数字はつぶれるため、
+     余白を残すより枠と数字を大きくしたほうが読み違いが起きにくい。 */
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  td, th { border: 1px solid #000; text-align: center; vertical-align: middle; }
+  td, th { border: 1.2px solid #000; text-align: center; vertical-align: middle; }
   /* 種類のまとまり(あり/なし/やさい)は太線で区切る */
-  .group-top td { border-top: 2.2px solid #000; }
-  .kind { width: 34px; font-size: 13pt; font-weight: 700; letter-spacing: 3px;
+  .group-top td { border-top: 2.5px solid #000; }
+  .kind { width: 40px; font-size: 16pt; font-weight: 700; letter-spacing: 6px;
           writing-mode: vertical-rl; }
-  .size { width: 40px; font-size: 12pt; font-weight: 700; }
-  .size.small-label { font-size: 8pt; line-height: 1.15; letter-spacing: 0; }
-  .price { width: 52px; font-size: 11.5pt; }
-  .daycol { font-size: 11pt; }
-  thead th { height: 26px; font-size: 12pt; font-weight: 700; }
-  .corner { font-size: 8pt; text-align: left; padding: 2px 4px; position: relative; }
-  .datecell { height: 24px; font-size: 11pt; }
-  .qty { height: 30px; font-size: 15pt; font-weight: 700; }
-  /* 数字が入る「中」の行だけ、実線で仕切って読みやすくする */
-  .blank { height: 30px; }
-  .other-order td { height: 34px; }
-  .other-label { font-size: 10.5pt; line-height: 1.5; }
-  .total td { height: 30px; font-size: 14pt; font-weight: 700; }
-  .total .label { letter-spacing: 6px; }
-  .closed { color: #666; font-size: 9pt; font-weight: 400; }
-  .note { margin-top: 6px; font-size: 9pt; }
-  .sign { margin-top: 10px; text-align: right; font-size: 12pt; }
+  .size { width: 46px; font-size: 15pt; font-weight: 700; }
+  .size.small-label { font-size: 10pt; line-height: 1.15; letter-spacing: 0; }
+  .price { width: 60px; font-size: 14pt; }
+  thead th { height: 34px; font-size: 15pt; font-weight: 700; }
+  .corner { font-size: 9pt; text-align: left; padding: 2px 4px; }
+  .datecell { height: 30px; font-size: 13pt; }
+  .qty { height: 54px; font-size: 26pt; font-weight: 700; }
+  .blank { height: 54px; }
+  .other-order td { height: 66px; }
+  .other-label { font-size: 13pt; line-height: 1.6; }
+  .total td { height: 50px; font-size: 20pt; font-weight: 700; }
+  .total .label { letter-spacing: 8px; }
+  .closed { color: #444; font-size: 13pt; font-weight: 400; }
+  .note { margin-top: 8px; font-size: 10.5pt; }
+  .sign { margin-top: 14px; text-align: right; font-size: 15pt; }
 </style>
 </head>
 <body>
