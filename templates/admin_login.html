@@ -12,7 +12,10 @@
     </select>
     <input type="text" name="admin_name_other" id="admin_name_other_input" placeholder="お名前を入力" hidden>
     <label>パスワード</label>
-    <input type="password" name="password" required>
+    <div class="secret-field">
+      <input type="password" name="password" required>
+      <button type="button" class="secret-toggle" aria-pressed="false" aria-label="入力内容を表示する">👁</button>
+    </div>
     <button type="submit" class="btn primary">ログイン</button>
   </form>
   {% if admin_manual_url %}
