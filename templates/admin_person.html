@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}{% if name %}{{ name }}さんの記録{% else %}個人の記録{% endif %}{% endblock %}
+{% block nav %}
+  <span class="who">{{ session.admin_name or '管理者' }}</span>
+  <a href="{{ url_for('admin_dashboard') }}">管理画面に戻る</a>
+{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h1>個人の記録を調べる</h1>
+  <p class="muted">チケットの受け渡し・食べた日・残枚数の動きを、1人分だけ時系列で並べます。残枚数が実際と合わないときの確認用です。</p>
+  <form method="get" action="{{ url_for('admin_person') }}" class="inline-form">
+    <label style="margin-bottom:0;">氏名
+      <select name="name">
+        <option value="">選択してください</option>
+        {% for n in names %}
+        <option value="{{ n }}" {% if n == name %}selected{% endif %}>{{ n }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn primary">表示</button>
+  </form>
+</div>
+
+{% if name %}
+<div class="card">
+  <h1>{{ name }}さんの残枚数</h1>
+  <div class="summary-row">
+    <div class="stat"><span class="stat-label">現在の残り</span><span class="stat-value">{{ status.remaining }}枚</span></div>
+    <div class="stat"><span class="stat-label">渡した合計</span><span class="stat-value">{{ total_given }}枚</span></div>
+    <div class="stat"><span class="stat-label">回収済み</span><span class="stat-value">{{ collected_count }}食</span></div>
+  </div>
+  <p class="muted" style="margin-bottom:0;">
+    計算式: 渡した合計{{ total_given }}枚 − 回収済み{{ collected_count }}食 = {{ status.raw_remaining }}枚
+    {% if base_date %}<br>起点: {{ base_date }} の{% if base_is_opening %}残枚数登録{% else %}最初の受け渡し{% endif %}(これより前の記録は計算に使いません){% endif %}
+  </p>
+  {% if status.shortage %}
+  <p class="notice" style="margin-top:10px; margin-bottom:0;">
+    ⚠️ 記録が{{ status.shortage }}枚分足りていません。渡した記録の登録漏れが考えられます。
+    実際の枚数が分かったら、管理画面の「残枚数の登録・修正」で入れ直してください。
+  </p>
+  {% endif %}
+  {% if status.uncollected %}
+  <p class="notice" style="margin-top:10px; margin-bottom:0;">チケットを渡せていない日が{{ status.uncollected }}日あります(残枚数は減っていません)。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h1>時系列</h1>
+  <p class="muted">上から古い順です。右端は、その時点での残枚数です。</p>
+  <div class="table-scroll table-scroll-grid">
+  <table class="table table-keep-grid">
+    <thead><tr><th>日付</th><th>できごと</th><th>内容</th><th class="num">残枚数</th></tr></thead>
+    <tbody>
+      {% for e in events %}
+      <tr{% if e.kind != 'meal' %} class="row-issue"{% endif %}>
+        <td data-label="日付">{{ e.date }}</td>
+        <td data-label="できごと">
+          {% if e.kind == 'issue' %}<span class="badge open">受け渡し</span>
+          {% elif e.kind == 'opening' %}<span class="badge closed">残枚数の登録</span>
+          {% elif e.state == 'collected' %}<span class="badge open">回収済み</span>
+          {% elif e.state == 'uncollected' %}<span class="badge closed">渡せていない</span>
+          {% elif e.state == 'cancelled' %}<span class="badge closed">キャンセル</span>
+          {% elif e.state == 'requested' %}<span class="badge closed">希望(未承認)</span>
+          {% else %}<span class="badge">回収待ち</span>{% endif %}
+        </td>
+        <td data-label="内容">
+          {% if e.kind == 'meal' %}
+            {{ e.item }}
+            {% if e.created_by == 'admin' %}<span class="muted">(代理)</span>{% endif %}
+            {% if e.state == 'uncollected' and not e.contacted %}<span class="muted">・未連絡</span>{% endif %}
+          {% else %}
+            {{ e.qty }}枚{% if e.is_base %} <span class="muted">← 計算の起点</span>{% endif %}
+          {% endif %}
+        </td>
+        <td data-label="残枚数" class="num">{% if e.balance is not none %}{{ e.balance }}{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% if not events %}
+      <tr><td colspan="4">記録がありません。</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <h1>希望と対応の履歴</h1>
+  {% if resolutions %}
+  <div class="table-scroll table-scroll-grid">
+  <table class="table table-keep-grid">
+    <thead><tr><th>対象日</th><th>結果</th><th>対応</th></tr></thead>
+    <tbody>
+      {% for r in resolutions %}
+      <tr>
+        <td data-label="対象日">{{ r.order_date }}</td>
+        <td data-label="結果"><span class="badge closed">{{ r.label }}</span>{% if r.detail %} {{ r.detail }}{% endif %}</td>
+        <td data-label="対応">{{ r.by or '(不明)' }}{% if r.at %} ・ {{ r.at[:16].replace('T', ' ') }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted" style="margin-bottom:0;">キャンセル・区分変更・新規注文の希望はまだありません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h1>天引き履歴</h1>
+  {% if payroll %}
+  <div class="table-scroll table-scroll-grid">
+  <table class="table table-keep-grid">
+    <thead><tr><th>締め期間</th><th>受け渡し日</th><th class="num">冊数</th><th class="num">天引き額</th><th>天引き日</th></tr></thead>
+    <tbody>
+      {% for p in payroll %}
+      <tr>
+        <td data-label="締め期間">{{ p.label }}</td>
+        <td data-label="受け渡し日">{{ p.dates|join('、') }}</td>
+        <td data-label="冊数" class="num">{{ p.booklets }}冊</td>
+        <td data-label="天引き額" class="num payroll-amount">¥{{ p.total }}</td>
+        <td data-label="天引き日">{{ p.deduction_date_label }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted" style="margin-bottom:0;">天引きの対象になった受け渡しはまだありません。</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

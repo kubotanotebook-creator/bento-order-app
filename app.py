@@ -2415,6 +2415,149 @@ def run_due_daily_jobs():
         print(f"WARNING: 日次処理でエラーが発生しました: {e}", file=sys.stderr)
 
 
+@app.route("/admin/person")
+def admin_person():
+    """1人分の記録を時系列で並べる調査用ページ。
+
+    残枚数が合わない人が出たとき、以前はデータベースを直接見るしかなかった。
+    受け渡し・食べた日・修正を1本の並びにして、その時点の残枚数を横に出すと、
+    どこから話が合わなくなったのかが目で追える。
+    """
+    if not admin_required():
+        return redirect(url_for("admin_login"))
+
+    db = get_db()
+    today = today_jst()
+    names = [
+        r["employee_name"]
+        for r in db.execute(
+            "SELECT DISTINCT employee_name FROM orders "
+            "UNION SELECT DISTINCT employee_name FROM ticket_issuances "
+            "ORDER BY employee_name"
+        ).fetchall()
+    ]
+    name = request.args.get("name", "").strip()
+    if not name or name not in names:
+        return render_template("admin_person.html", names=names, name=None)
+
+    issuances = db.execute(
+        "SELECT * FROM ticket_issuances WHERE employee_name = ? ORDER BY issued_at, id",
+        (name,),
+    ).fetchall()
+    orders = db.execute(
+        "SELECT o.*, m.category AS category, m.name AS dish_name FROM orders o "
+        "LEFT JOIN menu_items m ON o.menu_item_id = m.id "
+        "WHERE o.employee_name = ? ORDER BY o.order_date, o.id",
+        (name,),
+    ).fetchall()
+
+    # 残枚数の起点(最後の「残枚数の登録」)。これより前は計算に使わないので、
+    # 時系列でもそこが分かるようにする。
+    base_date = None
+    base_is_opening = False
+    for r in issuances:
+        if r["kind"] == "opening":
+            base_date = r["issued_at"]
+            base_is_opening = True
+    if base_date is None and issuances:
+        # 残枚数の登録が一度もない人は、最初の受け渡しが起点になる。
+        base_date = issuances[0]["issued_at"]
+
+    events = []
+    for r in issuances:
+        events.append({
+            "date": r["issued_at"],
+            "sort": (r["issued_at"], 0, r["id"]),
+            "kind": "opening" if r["kind"] == "opening" else "issue",
+            "qty": r["quantity"],
+            "is_base": r["issued_at"] == base_date
+            and (r["kind"] == "opening") == base_is_opening,
+        })
+    for o in orders:
+        if o["status"] == "cancelled":
+            state = "cancelled"
+        elif o["status"] == "requested":
+            state = "requested"
+        elif o["uncollected"]:
+            state = "uncollected"
+        elif o["paid"]:
+            state = "collected"
+        else:
+            state = "pending"
+        events.append({
+            "date": o["order_date"],
+            "sort": (o["order_date"], 1, o["id"]),
+            "kind": "meal",
+            "state": state,
+            "item": item_display_name(o["category"], o["dish_name"]) if o["category"] else "(メニュー削除済み)",
+            "created_by": o["created_by"],
+            "contacted": o["contacted"],
+        })
+    events.sort(key=lambda e: e["sort"])
+
+    # 残枚数の推移。起点より前の出来事は計算に入らないので balance を出さない。
+    balance = None
+    for e in events:
+        if base_date and e["date"] < base_date:
+            e["balance"] = None
+            continue
+        if e["kind"] in ("issue", "opening"):
+            balance = e["qty"] if e["kind"] == "opening" else (balance or 0) + e["qty"]
+        elif e["kind"] == "meal" and e.get("state") == "collected":
+            balance = (balance or 0) - 1
+        e["balance"] = balance
+
+    status = employee_ticket_status(db, name, today)
+    total_given = 0
+    if issuances:
+        base_index = 0
+        for i, r in enumerate(issuances):
+            if r["kind"] == "opening":
+                base_index = i
+        total_given = issuances[base_index]["quantity"] + sum(
+            r["quantity"] for r in issuances[base_index + 1:])
+    collected_count = total_given - status["raw_remaining"] if status.get("known") else 0
+
+    resolutions = [
+        {
+            "order_date": o["order_date"],
+            "label": RESOLUTION_LABELS.get(o["resolution"], o["resolution"]),
+            "detail": o["resolution_detail"],
+            "by": o["resolved_by"],
+            "at": o["resolved_at"],
+        }
+        for o in orders if o["resolution"]
+    ]
+    resolutions.sort(key=lambda r: (r["at"] or "", r["order_date"]), reverse=True)
+
+    settings = get_settings()
+    payroll = []
+    for cyc in compute_payroll_deduction_cycles(db, settings["price"] * 10):
+        for e in cyc["employees"]:
+            if e["name"] == name:
+                payroll.append({
+                    "label": cyc["label"],
+                    "deduction_date_label": cyc["deduction_date_label"],
+                    "booklets": e["booklets"],
+                    "total": e["total"],
+                    "dates": [i["label"] for i in e["issuances"]],
+                })
+
+    return render_template(
+        "admin_person.html",
+        names=names,
+        name=name,
+        events=events,
+        base_date=base_date,
+        base_is_opening=base_is_opening,
+        status=status,
+        total_given=total_given,
+        collected_count=collected_count,
+        resolutions=resolutions,
+        payroll=payroll,
+    )
+
+
 @app.route("/admin/pending")
 def admin_pending():
     """Small JSON payload the open admin page polls, so a cancel request that

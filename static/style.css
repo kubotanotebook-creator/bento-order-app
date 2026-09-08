@@ -52,6 +52,8 @@ body {
 }
 .announcement-bar-close:hover { opacity: 1; }
 .row-overdue { background: #fff5f5; }
+/* 個人の記録の時系列で、チケットを渡した行を食事の行と見分けやすくする。 */
+.row-issue { background: #f4f7fb; }
 .topbar-inner {
   max-width: 900px;
   margin: 0 auto;

@@ -342,6 +342,20 @@
   </div>
 
   <div class="card">
+    <h1>個人の記録を調べる</h1>
+    <p class="muted">残枚数が実際と合わないときに使います。その人の受け渡し・食べた日・残枚数の動きを時系列で確認できます。</p>
+    <form method="get" action="{{ url_for('admin_person') }}" class="inline-form" target="_blank">
+      <label style="margin-bottom:0;">氏名
+        <select name="name">
+          <option value="">選択してください</option>
+          {% for opt in ticket_dropdown_options %}<option value="{{ opt.name }}">{{ opt.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn">記録を見る</button>
+    </form>
+  </div>
+
+  <div class="card">
     <h1>残枚数の登録・修正</h1>
     <p class="muted">
       アプリを使い始める時点で、すでに配ってあるチケットの<strong>残り枚数</strong>を登録する欄です。
