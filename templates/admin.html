@@ -397,7 +397,7 @@
   {# 明日以降は回収そのものが起きていないので、チェックを出さない。
      当日ぶんは自動回収の時刻前でもチェックを出す — 昼の受け渡しの時点で
      「渡してもらえなかった」と分かることがあり、その場で記録できないと
-     15:00に自動で回収済みになってしまうため。 #}
+     時刻が来たら自動で回収済みになってしまうため。 #}
   {% set is_future = order_date > today %}
   {% set is_pending_auto = not is_future and order_date > collect_cutoff_date %}
   <div class="date-group">

@@ -110,7 +110,7 @@ SAME_DAY_CANCEL_CUTOFF = time(9, 0)
 # のがきっかけ)。既定を回収済みにして、渡してもらえなかった人だけを
 # 「未回収」として記録する形にしている。昼を十分に過ぎた時刻にしてあるのは、
 # 渡し漏れがあればその時点で分かっているため。
-TICKET_AUTO_COLLECT_TIME = time(15, 0)
+TICKET_AUTO_COLLECT_TIME = time(16, 0)
 
 # Links to the how-to manual, shown as a card on the employee dashboard and
 # in the admin nav. An admin can upload a PDF straight from the admin screen
@@ -1266,6 +1266,7 @@ def index():
     return render_template(
         "dashboard.html",
         employee_name=employee_name,
+        auto_collect_time=TICKET_AUTO_COLLECT_TIME.strftime("%H:%M"),
         this_week_label=build_week_label(this_monday),
         this_week_days=this_week_days,
         next_week_status=next_week_status,
@@ -2373,7 +2374,7 @@ def run_due_daily_jobs():
     today_str = now.date().isoformat()
     try:
         db = get_db()
-        # 15:00を過ぎた分のチケット回収を既定で済みにする。1日1回ではなく
+        # 時刻を過ぎた分のチケット回収を既定で済みにする。1日1回ではなく
         # 毎回確認するのは、朝に走ってしまうと当日分が対象外のままになるため。
         if auto_mark_collected(db):
             db.commit()
@@ -2774,22 +2775,42 @@ def admin_update_menu_item():
 def admin_upsert_order(db, settings, order_date, employee_name, category):
     """Create or overwrite the employee's active order for one day, as the
     admin. Shared by the single-day and whole-week proxy forms. Returns True
-    if a menu item existed for (order_date, category) and the write happened."""
+    if a menu item existed for (order_date, category) and the write happened.
+
+    締切を過ぎた週(=りりてーへFAX済み)への追加・区分変更は order_change_log
+    にも残す。ここが抜けていたため、当日に代理注文を1件入れても「本日の注文」
+    の食数は増えるのに「FAXと変化なし」のままで、りりてーへ電話すべきことに
+    気づけなかった。承認まわりの経路(キャンセル・区分変更・新規注文の承認)は
+    もともと記録しているので、代理注文だけが抜けていた形。
+    """
     menu_item = db.execute(
         "SELECT * FROM menu_items WHERE item_date = ? AND category = ?", (order_date, category)
     ).fetchone()
     if not menu_item:
         return False
 
-    existing = db.execute(
-        "SELECT * FROM orders WHERE employee_name = ? AND order_date = ? AND status = 'ordered'",
-        (employee_name, order_date),
-    ).fetchone()
-    if existing:
+    # 締切前の週はまだFAXしていないので、差として記録する意味がない
+    faxed = not week_is_open(db, week_monday(date.fromisoformat(order_date)), settings)
+
+    def _find_active():
+        return db.execute(
+            "SELECT o.id AS id, m.category AS category FROM orders o "
+            "JOIN menu_items m ON o.menu_item_id = m.id "
+            "WHERE o.employee_name = ? AND o.order_date = ? AND o.status = 'ordered'",
+            (employee_name, order_date),
+        ).fetchone()
+
+    def _overwrite(row):
         db.execute(
             "UPDATE orders SET menu_item_id = ?, unit_price = ?, created_at = ?, created_by = 'admin' WHERE id = ?",
-            (menu_item["id"], settings["price"], now_jst().isoformat(), existing["id"]),
+            (menu_item["id"], settings["price"], now_jst().isoformat(), row["id"]),
         )
+        if faxed and row["category"] != category:
+            log_order_change(db, order_date, row["category"], category)
+
+    existing = _find_active()
+    if existing:
+        _overwrite(existing)
     else:
         try:
             db.execute(
@@ -2797,17 +2818,13 @@ def admin_upsert_order(db, settings, order_date, employee_name, category):
                 "unit_price, created_by, created_at) VALUES (?, ?, ?, 1, 'ordered', 0, ?, 'admin', ?)",
                 (order_date, employee_name, menu_item["id"], settings["price"], now_jst().isoformat()),
             )
+            if faxed:
+                log_order_change(db, order_date, None, category)
         except sqlite3.IntegrityError:
             # Raced with another active order for the same person/day; update it.
-            dup = db.execute(
-                "SELECT id FROM orders WHERE employee_name = ? AND order_date = ? AND status = 'ordered'",
-                (employee_name, order_date),
-            ).fetchone()
+            dup = _find_active()
             if dup:
-                db.execute(
-                    "UPDATE orders SET menu_item_id = ?, unit_price = ?, created_at = ?, created_by = 'admin' WHERE id = ?",
-                    (menu_item["id"], settings["price"], now_jst().isoformat(), dup["id"]),
-                )
+                _overwrite(dup)
     return True
 
 
