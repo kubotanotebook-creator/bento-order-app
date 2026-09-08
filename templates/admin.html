@@ -15,11 +15,11 @@
   <a href="#cancel-requests" class="btn small primary">確認する</a>
 </div>
 
-{# {{ ticket_reminder_time }}を過ぎても本日分のチケット回収確認(paid)が済んで
-   いない人がいる間だけ出る警告。この画面を開いている間しか気づけない
-   (メール等の外部通知はしない)。 #}
+{# チケットを受け取れなかった人がいて、まだ本人に連絡していない間だけ出る
+   警告。回収済みが既定になったので「チェックがまだ」は警告にならない。
+   この画面を開いている間しか気づけない(メール等の外部通知はしない)。 #}
 <div id="ticket-attention-bar" class="attention-bar" {% if not show_ticket_reminder_now %}hidden{% endif %}>
-  <span class="attention-text">本日分のチケット回収がまだです(<strong id="ticket-attention-count">{{ unpaid_today_names|length }}</strong>名: <span id="ticket-attention-names">{{ unpaid_today_names|join('・') }}</span>さん)</span>
+  <span class="attention-text">チケットを受け取れていない人がいます(<strong id="ticket-attention-count">{{ uncollected_names|length }}</strong>名: <span id="ticket-attention-names">{{ uncollected_names|join('・') }}</span>さん)。本人に声をかけて、連絡したらチェックを入れてください。</span>
   <button type="button" class="btn small primary" id="ticket-attention-link">チケット回収タブを開く</button>
 </div>
 
@@ -393,7 +393,13 @@
 </div>
 
 {% macro order_date_group(order_date, items, is_today=False) %}
-  {% set unpaid_names = items|rejectattr('paid')|map(attribute='employee_name')|list %}
+  {% set uncollected_names_day = items|selectattr('uncollected')|map(attribute='employee_name')|list %}
+  {# 明日以降は回収そのものが起きていないので、チェックを出さない。
+     当日ぶんは自動回収の時刻前でもチェックを出す — 昼の受け渡しの時点で
+     「渡してもらえなかった」と分かることがあり、その場で記録できないと
+     15:00に自動で回収済みになってしまうため。 #}
+  {% set is_future = order_date > today %}
+  {% set is_pending_auto = not is_future and order_date > collect_cutoff_date %}
   <div class="date-group">
     <div class="date-group-header">
       <button type="button" class="date-toggle-btn {{ 'is-today' if is_today }}" data-target="orders-{{ order_date }}">
@@ -406,13 +412,14 @@
           {% if c %}・{{ category_short[code] }}{{ c }}{% endif %}
         {% endfor %}
       </span>
-      <span class="day-status" id="day-status-{{ order_date }}">
-        {% if not unpaid_names %}
-        <span class="badge open">全員確認済み</span>
-        {% elif unpaid_names|length == items|length %}
-        <span class="badge closed">全員まだ</span>
-        {% else %}
-        <span class="badge closed">{{ unpaid_names|join('・') }}さんのチケット回収がまだ</span>
+      <span class="day-status" id="day-status-{{ order_date }}"
+            data-mode="{{ 'future' if is_future else ('pending' if is_pending_auto else 'done') }}">
+        {% if uncollected_names_day %}
+        <span class="badge closed">{{ uncollected_names_day|join('・') }}さんが未回収</span>
+        {% elif is_pending_auto %}
+        <span class="badge">{{ auto_collect_time }}に回収済みになります</span>
+        {% elif not is_future %}
+        <span class="badge open">全員回収済み</span>
         {% endif %}
       </span>
     </div>
@@ -420,15 +427,28 @@
       <div class="table-scroll">
       <table class="table">
         <thead>
-          <tr><th>氏名</th><th>区分</th><th>チケット回収確認</th><th>操作</th></tr>
+          <tr><th>氏名</th><th>区分</th><th>チケット</th><th>連絡</th><th>操作</th></tr>
         </thead>
         <tbody>
           {% for o in items %}
           <tr>
             <td data-label="氏名">{{ o.employee_name }}{% if o.cancel_requested_at %} <span class="badge closed">キャンセル希望</span>{% endif %}</td>
             <td data-label="区分">{{ category_labels[o.category] }}</td>
-            <td data-label="チケット回収確認">
-              <input type="checkbox" class="paid-toggle" data-order-id="{{ o.id }}" data-order-date="{{ order_date }}" data-employee-name="{{ o.employee_name }}" {% if o.paid %}checked{% endif %}>
+            <td data-label="チケット">
+              {% if is_future %}
+                <span class="muted" style="font-size:0.82rem;">—</span>
+              {% else %}
+              <label class="collect-label">
+                <input type="checkbox" class="uncollected-toggle" data-order-id="{{ o.id }}" data-order-date="{{ order_date }}" data-employee-name="{{ o.employee_name }}" {% if o.uncollected %}checked{% endif %}>
+                <span>未回収</span>
+              </label>
+              {% endif %}
+            </td>
+            <td data-label="連絡">
+              <label class="collect-label contacted-label" data-order-id="{{ o.id }}" {% if not o.uncollected %}hidden{% endif %}>
+                <input type="checkbox" class="contacted-toggle" data-order-id="{{ o.id }}" {% if o.contacted %}checked{% endif %}>
+                <span>連絡した</span>
+              </label>
             </td>
             <td data-label="操作">
               <form method="post" action="{{ url_for('admin_cancel_order') }}" onsubmit="return confirm('この注文をキャンセルしますか?');">
@@ -448,8 +468,10 @@
 <div class="tab-panel" data-tab="orders">
   <div class="card">
     <h1>チケット回収</h1>
-    <p class="muted">📋 <strong>個人ごとの運用管理用</strong> — 1人ずつの注文・キャンセル・チケット回収確認はここで行います。リリテイへの発注食数は「りりてー注文数確認」タブを見てください。</p>
-    <p class="muted">🎫 <strong>「チケット回収確認」にチェックを入れた分だけ、その社員の残り枚数が減ります。</strong>お弁当と引き換えにチケットを受け取ったら、忘れずにチェックしてください(チェックを外せば元に戻ります)。</p>
+    <p class="muted">📋 <strong>個人ごとの運用管理用</strong> — 1人ずつの注文・キャンセル・チケットの記録はここで行います。りりてー様への発注食数は「弁当注文/弁当チェック表印刷」タブを見てください。</p>
+    <p class="muted">🎫 <strong>{{ auto_collect_time }}を過ぎると、その日の分は自動で「回収済み」になります。</strong>ふだんは何もしなくて構いません。</p>
+    <p class="muted">⚠️ <strong>チケットを受け取れなかった人だけ「未回収」にチェックを入れてください。</strong>その人の残り枚数は減らないままになります。あとで受け取れたらチェックを外せば回収済みに戻ります。</p>
+    <p class="muted">未回収にすると「連絡した」のチェックが出ます。本人に声をかけたら入れてください。入れるまでは画面の上に出しつづけます。</p>
     <p class="muted">日付をクリックすると内訳が開きます。本日の分は最初から開いています。未来の分は週ごと、過ぎた分は月ごとにまとまっているので、見たいところをクリックして開いてください。</p>
 
     {% if today_order_items %}
@@ -991,41 +1013,68 @@
 
 <script>
 (function () {
+  /* その日の見出しに出すバッジ。既定が回収済みなので、名前が出るのは
+     「未回収」にチェックが入っている人だけ。 */
   function updateDayStatus(orderDate) {
     var statusEl = document.getElementById('day-status-' + orderDate);
-    if (!statusEl) return;
-    var boxes = document.querySelectorAll('.paid-toggle[data-order-date="' + orderDate + '"]');
-    var unpaidNames = [];
-    boxes.forEach(function (b) { if (!b.checked) unpaidNames.push(b.dataset.employeeName); });
+    if (!statusEl || statusEl.dataset.mode === 'future') return;
+    var boxes = document.querySelectorAll('.uncollected-toggle[data-order-date="' + orderDate + '"]');
+    var names = [];
+    boxes.forEach(function (b) { if (b.checked) names.push(b.dataset.employeeName); });
     var badge = document.createElement('span');
-    if (!unpaidNames.length) {
-      badge.className = 'badge open';
-      badge.textContent = '全員確認済み';
-    } else if (unpaidNames.length === boxes.length) {
+    if (names.length) {
       badge.className = 'badge closed';
-      badge.textContent = '全員まだ';
+      badge.textContent = names.join('・') + 'さんが未回収';
+    } else if (statusEl.dataset.mode === 'pending') {
+      badge.className = 'badge';
+      badge.textContent = '{{ auto_collect_time }}に回収済みになります';
     } else {
-      badge.className = 'badge closed';
-      badge.textContent = unpaidNames.join('・') + 'さんのチケット回収がまだ';
+      badge.className = 'badge open';
+      badge.textContent = '全員回収済み';
     }
     statusEl.innerHTML = '';
     statusEl.appendChild(badge);
   }
 
-  document.querySelectorAll('.paid-toggle').forEach(function (cb) {
+  function post(url, body, cb, onError) {
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      cb();
+    }).catch(function () {
+      onError();
+      alert('通信エラーが発生しました。もう一度お試しください。');
+    });
+  }
+
+  document.querySelectorAll('.uncollected-toggle').forEach(function (cb) {
     cb.addEventListener('change', function () {
-      var id = cb.dataset.orderId;
-      var wasChecked = cb.checked;
-      fetch("{{ url_for('admin_toggle_paid') }}", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'order_id=' + encodeURIComponent(id)
-      }).then(function () {
-        updateDayStatus(cb.dataset.orderDate);
-      }).catch(function () {
-        cb.checked = !wasChecked;
-        alert('通信エラーが発生しました。もう一度お試しください。');
-      });
+      var wasChecked = !cb.checked;
+      var label = document.querySelector('.contacted-label[data-order-id="' + cb.dataset.orderId + '"]');
+      post("{{ url_for('admin_set_collection') }}",
+        'order_id=' + encodeURIComponent(cb.dataset.orderId) + '&uncollected=' + (cb.checked ? '1' : '0'),
+        function () {
+          /* 未回収でなくなったら「連絡した」は意味が無くなるので隠して戻す */
+          if (label) {
+            label.hidden = !cb.checked;
+            if (!cb.checked) label.querySelector('input').checked = false;
+          }
+          updateDayStatus(cb.dataset.orderDate);
+        },
+        function () { cb.checked = wasChecked; });
+    });
+  });
+
+  document.querySelectorAll('.contacted-toggle').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var wasChecked = !cb.checked;
+      post("{{ url_for('admin_toggle_contacted') }}",
+        'order_id=' + encodeURIComponent(cb.dataset.orderId) + '&contacted=' + (cb.checked ? '1' : '0'),
+        function () {},
+        function () { cb.checked = wasChecked; });
     });
   });
 })();
@@ -1060,12 +1109,9 @@
   }
   function renderTicket(data) {
     if (!ticketBar) return;
-    var show = data.show !== undefined
-      ? data.show
-      : (data.now >= data.ticket_reminder_time && data.unpaid_today_count > 0);
-    ticketBar.hidden = !show;
-    if (ticketCountEl) ticketCountEl.textContent = data.unpaid_today_count;
-    if (ticketNamesEl) ticketNamesEl.textContent = data.unpaid_today_names.join('・');
+    ticketBar.hidden = !(data.uncollected_count > 0);
+    if (ticketCountEl) ticketCountEl.textContent = data.uncollected_count;
+    if (ticketNamesEl) ticketNamesEl.textContent = data.uncollected_names.join('・');
   }
 
   function canNotify() {
@@ -1154,9 +1200,8 @@
     today: {{ cancel_requests|selectattr('is_today')|list|length }}
   });
   renderTicket({
-    show: {{ 'true' if show_ticket_reminder_now else 'false' }},
-    unpaid_today_count: {{ unpaid_today_names|length }},
-    unpaid_today_names: {{ unpaid_today_names|tojson }}
+    uncollected_count: {{ uncollected_names|length }},
+    uncollected_names: {{ uncollected_names|tojson }}
   });
 })();
 </script>

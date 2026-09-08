@@ -179,6 +179,11 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 /* パスワードや生年月日のように、他人に見られたくない入力欄。伏せ字にした
    うえで目のボタンで確認できるようにする。休憩室や共有パソコンで肩越しに
    見られるのを防ぎつつ、打ち間違いは自分で確かめられるようにするため。 */
+/* チケット回収の「未回収」「連絡した」チェック。文字とチェックが離れて
+   いると押しにくいので、ラベルごと1つの当たり判定にする。 */
+.collect-label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem; }
+.collect-label input { margin: 0; width: 18px; height: 18px; }
+
 .secret-field { position: relative; }
 .secret-field input { padding-right: 46px; }
 .secret-toggle {

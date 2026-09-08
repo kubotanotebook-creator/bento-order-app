@@ -104,7 +104,13 @@ RESOLUTION_LABELS = {
 SAME_DAY_CANCEL_CUTOFF = time(9, 0)
 # 本日分のチケット回収確認がまだ済んでいなければ、管理画面を開いている間だけ
 # 気づけるようこの時刻以降に警告バーを出す(メール等の外部通知はしない)。
-TICKET_COLLECTION_REMINDER_TIME = time(16, 30)
+# この時刻を過ぎたら、その日の注文は既定で「チケット回収済み」として扱う。
+# 以前は管理者が全員分に手でチェックを付けていたが、ほぼ毎日全員から回収
+# できるのに人数分クリックするのは負担が大きすぎた(一括ボタンの要望が出た
+# のがきっかけ)。既定を回収済みにして、渡してもらえなかった人だけを
+# 「未回収」として記録する形にしている。昼を十分に過ぎた時刻にしてあるのは、
+# 渡し漏れがあればその時点で分かっているため。
+TICKET_AUTO_COLLECT_TIME = time(15, 0)
 
 # Links to the how-to manual, shown as a card on the employee dashboard and
 # in the admin nav. An admin can upload a PDF straight from the admin screen
@@ -195,6 +201,8 @@ def init_db():
             quantity INTEGER NOT NULL DEFAULT 1,
             status TEXT NOT NULL DEFAULT 'ordered',
             paid INTEGER NOT NULL DEFAULT 0,
+            uncollected INTEGER NOT NULL DEFAULT 0,
+            contacted INTEGER NOT NULL DEFAULT 0,
             unit_price INTEGER NOT NULL DEFAULT 300,
             created_by TEXT NOT NULL DEFAULT 'self',
             created_at TEXT NOT NULL,
@@ -324,6 +332,19 @@ def init_db():
     # so there's no "toast" to show at approval time; this persists the
     # outcome until the employee's dashboard has displayed it once.
     for column in ("resolution TEXT", "resolution_detail TEXT"):
+        try:
+            db.execute(f"ALTER TABLE orders ADD COLUMN {column}")
+            db.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+    # チケット回収の既定を「回収済み」にしたことで必要になった2つの印。
+    #   uncollected: 弁当は渡したがチケットを受け取れなかった(自動回収の例外)
+    #   contacted:   その未回収について本人に連絡したか
+    # 既存の paid はそのまま「回収済み」を表す。残枚数・精算の数え方は
+    # 変えず、paid を誰が立てるか(手動 → 時刻が来たら自動)だけを変えている。
+    for column in ("uncollected INTEGER NOT NULL DEFAULT 0",
+                   "contacted INTEGER NOT NULL DEFAULT 0"):
         try:
             db.execute(f"ALTER TABLE orders ADD COLUMN {column}")
             db.commit()
@@ -890,6 +911,30 @@ def compute_payroll_deduction_cycles(db, price_per_booklet):
     return payroll_deduction_cycles
 
 
+def ticket_collect_cutoff_date(now=None):
+    """この日付以前の注文は、未回収の印がなければ「回収済み」とみなす。
+
+    当日ぶんが入るのは TICKET_AUTO_COLLECT_TIME を過ぎてから。
+    """
+    now = now or now_jst()
+    today = now.date()
+    return today if now.time() >= TICKET_AUTO_COLLECT_TIME else today - timedelta(days=1)
+
+
+def auto_mark_collected(db):
+    """期限を過ぎた注文のうち、未回収の印が無いものを回収済みにする。
+
+    定期実行のない無料プランなので、アクセスのついでに回す(run_due_daily_jobs)。
+    何度走らせても結果が変わらないので、取りこぼしても次のアクセスで揃う。
+    """
+    cur = db.execute(
+        "UPDATE orders SET paid = 1 "
+        "WHERE status = 'ordered' AND paid = 0 AND uncollected = 0 AND order_date <= ?",
+        (ticket_collect_cutoff_date().isoformat(),),
+    )
+    return cur.rowcount
+
+
 def employee_ticket_status(db, employee_name, today):
     """Ticket status from the logged 受け渡し記録 (admin_issue_tickets): the
     last booklet handed out, minus the tickets the admin has actually
@@ -920,8 +965,15 @@ def employee_ticket_status(db, employee_name, today):
     ).fetchone()["c"]
     pending = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
-        "AND order_date > ? AND order_date <= ? AND paid = 0",
+        "AND order_date > ? AND order_date <= ? AND paid = 0 AND uncollected = 0",
         (employee_name, last_issuance["issued_at"], today.isoformat()),
+    ).fetchone()["c"]
+    # チケットを渡せていないと管理者が記録した日。残枚数は減らない(手元に
+    # 券が残っているため)が、本人には「渡し忘れている」ことを見せる。
+    uncollected = db.execute(
+        "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
+        "AND order_date > ? AND uncollected = 1",
+        (employee_name, last_issuance["issued_at"]),
     ).fetchone()["c"]
     return {
         "known": True,
@@ -932,6 +984,7 @@ def employee_ticket_status(db, employee_name, today):
         # display "3/3" instead of the intended "3/10".
         "total": 10,
         "pending": pending,
+        "uncollected": uncollected,
         "issued_at": last_issuance["issued_at"],
     }
 
@@ -2011,12 +2064,16 @@ def admin_dashboard():
     today_key, future_dates, past_dates = split_dates_today_future_past(orders_by_date.keys(), today)
     today_order_items = orders_by_date.get(today_key, []) if today_key else []
 
-    # 16:30を過ぎてもチケット回収確認(paid)が済んでいない人がいれば、画面を
-    # 開いている管理者に気づかせる警告バー用。メール等の外部通知はしない。
-    unpaid_today_names = sorted({o["employee_name"] for o in today_order_items if not o["paid"]})
-    show_ticket_reminder_now = (
-        now_jst().time() >= TICKET_COLLECTION_REMINDER_TIME and bool(unpaid_today_names)
-    )
+    # チケットを受け取れなかった人のうち、まだ本人に連絡していない分。
+    # 回収済みが既定になったので「まだチェックしていない」は警告に値しない。
+    # 代わりに、管理者が未回収と記録したのに連絡が済んでいない状態を出す。
+    uncollected_rows = db.execute(
+        "SELECT order_date, employee_name FROM orders "
+        "WHERE status = 'ordered' AND uncollected = 1 AND contacted = 0 "
+        "ORDER BY order_date DESC, employee_name"
+    ).fetchall()
+    uncollected_names = sorted({r["employee_name"] for r in uncollected_rows})
+    show_ticket_reminder_now = bool(uncollected_names)
 
     future_weeks = group_dates_by_week(future_dates)
     for week in future_weeks:
@@ -2177,9 +2234,10 @@ def admin_dashboard():
         cancel_requests=cancel_requests,
         resolved_log=resolved_log,
         today_order_items=today_order_items,
-        unpaid_today_names=unpaid_today_names,
+        uncollected_names=uncollected_names,
         show_ticket_reminder_now=show_ticket_reminder_now,
-        ticket_reminder_time=TICKET_COLLECTION_REMINDER_TIME.strftime("%H:%M"),
+        collect_cutoff_date=ticket_collect_cutoff_date().isoformat(),
+        auto_collect_time=TICKET_AUTO_COLLECT_TIME.strftime("%H:%M"),
         future_weeks=future_weeks,
         past_months=past_months,
         today_orders=today_orders,
@@ -2315,6 +2373,10 @@ def run_due_daily_jobs():
     today_str = now.date().isoformat()
     try:
         db = get_db()
+        # 15:00を過ぎた分のチケット回収を既定で済みにする。1日1回ではなく
+        # 毎回確認するのは、朝に走ってしまうと当日分が対象外のままになるため。
+        if auto_mark_collected(db):
+            db.commit()
         if claim_job(db, "backup", today_str):
             db.commit()
             try:
@@ -2344,10 +2406,10 @@ def admin_pending():
     db = get_db()
     pending = pending_cancel_requests(db)
     today_str = today_jst().isoformat()
-    unpaid_today_names = sorted({
+    uncollected_names = sorted({
         r["employee_name"] for r in db.execute(
-            "SELECT employee_name FROM orders WHERE status = 'ordered' AND order_date = ? AND paid = 0",
-            (today_str,),
+            "SELECT employee_name FROM orders "
+            "WHERE status = 'ordered' AND uncollected = 1 AND contacted = 0"
         ).fetchall()
     })
     return jsonify({
@@ -2359,9 +2421,8 @@ def admin_pending():
         # reminder on JST, not on whatever timezone the viewer's PC is set to.
         "now": now_jst().strftime("%H:%M"),
         "same_day_cutoff": SAME_DAY_CANCEL_CUTOFF.strftime("%H:%M"),
-        "unpaid_today_count": len(unpaid_today_names),
-        "unpaid_today_names": unpaid_today_names,
-        "ticket_reminder_time": TICKET_COLLECTION_REMINDER_TIME.strftime("%H:%M"),
+        "uncollected_count": len(uncollected_names),
+        "uncollected_names": uncollected_names,
     })
 
 
@@ -3159,17 +3220,50 @@ def admin_restore_order():
     return redirect(url_for("admin_dashboard"))
 
 
-@app.route("/admin/orders/toggle-paid", methods=["POST"])
-def admin_toggle_paid():
+@app.route("/admin/orders/collection", methods=["POST"])
+def admin_set_collection():
+    """チケットを受け取れたか受け取れなかったかを記録する。
+
+    既定は回収済みなので、ここで実際に押されるのはほとんどが「未回収に
+    する」ほう。戻すときは印を消し、自動回収の期限を過ぎていれば同時に
+    回収済みへ戻す(期限前なら 0 のままにして、時刻が来たら自動で立つ)。
+    連絡済みの印も、未回収でなくなった時点で意味を失うので消す。
+    """
     if not admin_required():
-        return redirect(url_for("admin_login"))
+        return jsonify({"error": "unauthorized"}), 403
     db = get_db()
     order_id = request.form.get("order_id")
-    row = db.execute("SELECT paid FROM orders WHERE id = ?", (order_id,)).fetchone()
-    if row:
-        db.execute("UPDATE orders SET paid = ? WHERE id = ?", (0 if row["paid"] else 1, order_id))
-        db.commit()
-    return redirect(url_for("admin_dashboard"))
+    uncollected = request.form.get("uncollected") == "1"
+    row = db.execute("SELECT order_date FROM orders WHERE id = ?", (order_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    if uncollected:
+        db.execute("UPDATE orders SET uncollected = 1, paid = 0 WHERE id = ?", (order_id,))
+    else:
+        paid = 1 if row["order_date"] <= ticket_collect_cutoff_date().isoformat() else 0
+        db.execute(
+            "UPDATE orders SET uncollected = 0, contacted = 0, paid = ? WHERE id = ?",
+            (paid, order_id),
+        )
+    db.commit()
+    return "", 204
+
+
+@app.route("/admin/orders/contacted", methods=["POST"])
+def admin_toggle_contacted():
+    """未回収の人に「チケットをください」と伝えたかどうかの記録。
+
+    連絡し忘れたまま日が経つと本人も覚えていないので、連絡が済むまでは
+    管理画面の上部に出しつづける(その表示を消すためのチェック)。
+    """
+    if not admin_required():
+        return jsonify({"error": "unauthorized"}), 403
+    db = get_db()
+    order_id = request.form.get("order_id")
+    contacted = 1 if request.form.get("contacted") == "1" else 0
+    db.execute("UPDATE orders SET contacted = ? WHERE id = ?", (contacted, order_id))
+    db.commit()
+    return "", 204
 
 
 @app.route("/admin/settings/update", methods=["POST"])
