@@ -342,24 +342,25 @@
   </div>
 
   <div class="card">
-    <h1>運用開始時の残枚数を登録(最初に1回だけ)</h1>
+    <h1>残枚数の登録・修正</h1>
     <p class="muted">
-      アプリを使い始める時点で、すでに配ってあるチケットの<strong>残り枚数</strong>をここで登録します。
-      アプリは「最後に渡した枚数 − アプリに入っている注文数」で残りを計算するため、
-      これを入れておかないと、使いかけの冊が満タン(10枚)として表示されてしまいます。
+      アプリを使い始める時点で、すでに配ってあるチケットの<strong>残り枚数</strong>を登録する欄です。
+      あわせて、<strong>表示されている残枚数が実際と合わないときの修正</strong>にも使えます。
+      実際に手元にある枚数を入れると、その日を新しい基準にして数え直します(それ以前の記録は計算に使いません)。
     </p>
     <p class="muted">
-      <strong>この登録は天引きの対象になりません。</strong>すでに紙の運用で精算済みのぶんだからです。
+      <strong>この登録は天引きの対象になりません。</strong>すでに精算済みのぶんを、もう一度請求しないためです。
       そのため上の「月ごとの天引き集計」には出てきません。登録内容の確認と取り消しはこのカードの下で行えます。
-      8月16日以降に新しく渡した冊は、上の「チケット受け渡し記録」に実際の日付で登録してください(そちらは天引きに反映されます)。
+      新しく10枚渡したときは、こちらではなく上の「チケット受け渡し記録」に登録してください(そちらは天引きに反映されます)。
     </p>
     <form method="post" action="{{ url_for('admin_set_opening_tickets') }}" class="grid-form">
       <label>氏名
         <input type="text" name="employee_name" list="employee-list" placeholder="例: 山田 太郎" required>
       </label>
       <label>基準日<input type="date" name="issued_at" value="{{ today }}" required></label>
+      {# 冊をまたいで持っている人は10枚を超えることがあるので上限を広げてある #}
       <label>この日時点の残り枚数
-        <input type="number" name="remaining" min="0" max="10" step="1" placeholder="例: 4" required>
+        <input type="number" name="remaining" min="0" max="30" step="1" placeholder="例: 4" required>
       </label>
       <button type="submit" class="btn primary">残り枚数を登録</button>
     </form>

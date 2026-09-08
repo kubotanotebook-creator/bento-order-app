@@ -936,56 +936,70 @@ def auto_mark_collected(db):
 
 
 def employee_ticket_status(db, employee_name, today):
-    """Ticket status from the logged 受け渡し記録 (admin_issue_tickets): the
-    last booklet handed out, minus the tickets the admin has actually
-    confirmed collecting since that handout (paid = 1).
+    """Ticket status from the logged 受け渡し記録 (admin_issue_tickets),
+    minus the meals whose ticket has been collected (paid = 1).
 
-    Counted on collection, not on the day passing: a ticket only really
-    leaves someone's hand when 松浦さん/陽介さん takes it in exchange for the
-    bento, so ticking チケット回収確認 is what should move the number. Someone
-    who ordered but was away that day still has their ticket.
+    Counted on collection, not on the day passing: 渡せなかった日(uncollected)
+    は残枚数を減らさない。券がまだ本人の手元にあるため。
 
-    The handout date itself is EXCLUDED (order_date strictly after
-    issued_at): a new booklet is only ever given once the old one ran out,
-    so an order on the handout date was paid for with the old booklet.
+    残りは「渡した枚数の合計 − 回収済みの食数」で出す。冊を渡すたびに10枚へ
+    リセットするのではなく足していく。こうすると:
+
+    * 前の冊が数枚残っているうちに次の冊を渡しても、その残りが消えない
+    * 受け渡し日当日の弁当をどちらの冊から数えるか、という判定自体が不要になる
+      (最後の1枚で当日分を払った人も、0枚で受け取ってその日から使った人も、
+       同じ引き算で正しい枚数になる)
+
+    起点は最後の「残枚数の登録」(kind='opening')。運用開始時の登録と、ズレが
+    出たときの修正の両方がこれにあたり、それ以前の記録は数え直さない。
 
     `pending` is meals already eaten whose ticket hasn't been ticked off yet
     — shown to the employee so an unrecorded collection doesn't look like
     the count is simply wrong."""
-    last_issuance = db.execute(
-        "SELECT * FROM ticket_issuances WHERE employee_name = ? ORDER BY issued_at DESC, id DESC LIMIT 1",
+    rows = db.execute(
+        "SELECT * FROM ticket_issuances WHERE employee_name = ? ORDER BY issued_at, id",
         (employee_name,),
-    ).fetchone()
-    if not last_issuance:
+    ).fetchall()
+    if not rows:
         return {"known": False}
+
+    base_index = 0
+    for i, row in enumerate(rows):
+        if row["kind"] == "opening":
+            base_index = i
+    base = rows[base_index]
+    total_given = base["quantity"] + sum(r["quantity"] for r in rows[base_index + 1:])
+
     collected = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
         "AND order_date > ? AND paid = 1",
-        (employee_name, last_issuance["issued_at"]),
+        (employee_name, base["issued_at"]),
     ).fetchone()["c"]
     pending = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
         "AND order_date > ? AND order_date <= ? AND paid = 0 AND uncollected = 0",
-        (employee_name, last_issuance["issued_at"], today.isoformat()),
+        (employee_name, base["issued_at"], today.isoformat()),
     ).fetchone()["c"]
     # チケットを渡せていないと管理者が記録した日。残枚数は減らない(手元に
     # 券が残っているため)が、本人には「渡し忘れている」ことを見せる。
     uncollected = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
         "AND order_date > ? AND uncollected = 1",
-        (employee_name, last_issuance["issued_at"]),
+        (employee_name, base["issued_at"]),
     ).fetchone()["c"]
+
+    raw_remaining = total_given - collected
     return {
         "known": True,
-        "remaining": max(0, last_issuance["quantity"] - collected),
-        # Always the booklet size (10), not last_issuance["quantity"] — for a
-        # kind='opening' row that quantity is the go-live remaining count
-        # (e.g. 3), not a full booklet, so showing it as the denominator would
-        # display "3/3" instead of the intended "3/10".
-        "total": 10,
+        # 実際に手元にある枚数がマイナスになることはないので、表示は0で止める。
+        "remaining": max(0, raw_remaining),
+        # 計算上の生の値。マイナスなら受け渡し記録の抜けを意味するので、
+        # 管理側でそれと分かるようにこちらも返す。
+        "raw_remaining": raw_remaining,
+        "shortage": max(0, -raw_remaining),
         "pending": pending,
         "uncollected": uncollected,
-        "issued_at": last_issuance["issued_at"],
+        "issued_at": rows[-1]["issued_at"],
     }
 
 
@@ -2126,7 +2140,11 @@ def admin_dashboard():
     for name in known_employees:
         status = employee_ticket_status(db, name, today)
         if status["known"]:
-            label = f"{name}(残り{status['remaining']}枚)"
+            # 記録が足りていない人は、渡す前に記録を直したいので一覧で分かるようにする。
+            if status["shortage"]:
+                label = f"{name}(残り0枚・記録が{status['shortage']}枚分不足)"
+            else:
+                label = f"{name}(残り{status['remaining']}枚)"
             out_of_tickets = status["remaining"] <= 0
         else:
             label = f"{name}(受け渡し記録なし)"
@@ -2958,8 +2976,10 @@ def admin_set_opening_tickets():
     except ValueError:
         flash("残り枚数を数字で入力してください。", "error")
         return redirect(url_for("admin_dashboard"))
-    if not 0 <= remaining <= 10:
-        flash("残り枚数は0〜10の範囲で入力してください。", "error")
+    # 冊をまたいで持っている人(前の冊が残っているうちに次を渡した等)は
+    # 10枚を超えることがあるので、上限を広げてある。
+    if not 0 <= remaining <= 30:
+        flash("残り枚数は0〜30の範囲で入力してください。", "error")
         return redirect(url_for("admin_dashboard"))
 
     db.execute(
