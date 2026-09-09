@@ -953,6 +953,10 @@ def employee_ticket_status(db, employee_name, today):
     起点は最後の「残枚数の登録」(kind='opening')。運用開始時の登録と、ズレが
     出たときの修正の両方がこれにあたり、それ以前の記録は数え直さない。
 
+    登録した枚数は「その日の朝の時点の残り」として扱う。つまり起点と同じ日に
+    食べた分は差し引く(order_date >= 起点)。調査ページの時系列も同じ数え方で
+    並べており、ここを「起点より後」にすると同じ人の残枚数が2か所で1枚ずれる。
+
     `pending` is meals already eaten whose ticket hasn't been ticked off yet
     — shown to the employee so an unrecorded collection doesn't look like
     the count is simply wrong."""
@@ -972,19 +976,19 @@ def employee_ticket_status(db, employee_name, today):
 
     collected = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
-        "AND order_date > ? AND paid = 1",
+        "AND order_date >= ? AND paid = 1",
         (employee_name, base["issued_at"]),
     ).fetchone()["c"]
     pending = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
-        "AND order_date > ? AND order_date <= ? AND paid = 0 AND uncollected = 0",
+        "AND order_date >= ? AND order_date <= ? AND paid = 0 AND uncollected = 0",
         (employee_name, base["issued_at"], today.isoformat()),
     ).fetchone()["c"]
     # チケットを渡せていないと管理者が記録した日。残枚数は減らない(手元に
     # 券が残っているため)が、本人には「渡し忘れている」ことを見せる。
     uncollected = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
-        "AND order_date > ? AND uncollected = 1",
+        "AND order_date >= ? AND uncollected = 1",
         (employee_name, base["issued_at"]),
     ).fetchone()["c"]
 
