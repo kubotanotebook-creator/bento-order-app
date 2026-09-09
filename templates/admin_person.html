@@ -32,7 +32,7 @@
   </div>
   <p class="muted" style="margin-bottom:0;">
     計算式: 渡した合計{{ total_given }}枚 − 回収済み{{ collected_count }}食 = {{ status.raw_remaining }}枚
-    {% if base_date %}<br>起点: {{ base_date }} の{% if base_is_opening %}残枚数登録{% else %}最初の受け渡し{% endif %}(これより前の記録は計算に使いません){% endif %}
+    {% if base_date %}<br>起点: {{ base_date }} の{% if base_is_opening %}残枚数登録{% else %}最初の受け渡し{% endif %}(この日までの食べた記録は、登録した枚数にすでに反映されているものとして数え直しません){% endif %}
   </p>
   {% if status.shortage %}
   <p class="notice" style="margin-top:10px; margin-bottom:0;">
@@ -69,6 +69,7 @@
             {{ e.item }}
             {% if e.created_by == 'admin' %}<span class="muted">(代理)</span>{% endif %}
             {% if e.state == 'uncollected' and not e.contacted %}<span class="muted">・未連絡</span>{% endif %}
+            {% if e.excluded %}<span class="muted">・起点までの分(登録枚数に反映済み)</span>{% endif %}
           {% else %}
             {{ e.qty }}枚{% if e.is_base %} <span class="muted">← 計算の起点</span>{% endif %}
           {% endif %}

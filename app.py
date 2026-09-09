@@ -953,9 +953,10 @@ def employee_ticket_status(db, employee_name, today):
     起点は最後の「残枚数の登録」(kind='opening')。運用開始時の登録と、ズレが
     出たときの修正の両方がこれにあたり、それ以前の記録は数え直さない。
 
-    登録した枚数は「その日の朝の時点の残り」として扱う。つまり起点と同じ日に
-    食べた分は差し引く(order_date >= 起点)。調査ページの時系列も同じ数え方で
-    並べており、ここを「起点より後」にすると同じ人の残枚数が2か所で1枚ずれる。
+    登録した枚数は「基準日の終わりの時点」の残り。運用でも、その日までに
+    回収したチケットを引いた枚数を数えて登録している。したがって基準日
+    当日ぶんまでは登録枚数に織り込み済みで、数えるのは翌日から
+    (order_date > 起点)。調査ページの時系列も同じ区切りで並べる。
 
     `pending` is meals already eaten whose ticket hasn't been ticked off yet
     — shown to the employee so an unrecorded collection doesn't look like
@@ -976,19 +977,19 @@ def employee_ticket_status(db, employee_name, today):
 
     collected = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
-        "AND order_date >= ? AND paid = 1",
+        "AND order_date > ? AND paid = 1",
         (employee_name, base["issued_at"]),
     ).fetchone()["c"]
     pending = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
-        "AND order_date >= ? AND order_date <= ? AND paid = 0 AND uncollected = 0",
+        "AND order_date > ? AND order_date <= ? AND paid = 0 AND uncollected = 0",
         (employee_name, base["issued_at"], today.isoformat()),
     ).fetchone()["c"]
     # チケットを渡せていないと管理者が記録した日。残枚数は減らない(手元に
     # 券が残っているため)が、本人には「渡し忘れている」ことを見せる。
     uncollected = db.execute(
         "SELECT COUNT(*) as c FROM orders WHERE employee_name = ? AND status = 'ordered' "
-        "AND order_date >= ? AND uncollected = 1",
+        "AND order_date > ? AND uncollected = 1",
         (employee_name, base["issued_at"]),
     ).fetchone()["c"]
 
@@ -2500,10 +2501,15 @@ def admin_person():
     events.sort(key=lambda e: e["sort"])
 
     # 残枚数の推移。起点より前の出来事は計算に入らないので balance を出さない。
+    # 基準日「当日」の食事も引かない。登録する枚数は、その日までに回収した
+    # ぶんを引いたあとの実際の手持ちなので、ここで引くと二重に減ってしまう
+    # (残枚数の計算 employee_ticket_status と同じ区切り)。
     balance = None
     for e in events:
-        if base_date and e["date"] < base_date:
+        if base_date and (e["date"] < base_date
+                          or (e["kind"] == "meal" and e["date"] <= base_date)):
             e["balance"] = None
+            e["excluded"] = True   # 画面で「なぜ引かれていないのか」が分かるように
             continue
         if e["kind"] in ("issue", "opening"):
             balance = e["qty"] if e["kind"] == "opening" else (balance or 0) + e["qty"]
