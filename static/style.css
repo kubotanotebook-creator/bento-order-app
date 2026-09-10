@@ -574,6 +574,18 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .payroll-headline .summary-row { margin: 6px 0 0; }
 .payroll-amount { color: #b23b0c; }
 .payroll-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* 社員の残枚数の下に出す「今日の分は引かれているか」。数字を見た瞬間に
+   分かるよう、注記(muted)より一段はっきりさせる。 */
+.today-ticket-state {
+  margin: 4px 0 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  display: inline-block;
+}
+.today-ticket-state.is-pending { background: #fff4e0; color: #8a5a00; }
+.today-ticket-state.is-done { background: #e6f4ea; color: #1a7f37; }
+
 /* 全員の残枚数一覧。枚数を縦に見比べるので、桁をそろえて右寄せにする。 */
 .ticket-overview .num { text-align: right; font-variant-numeric: tabular-nums; }
 .ticket-overview td:first-child a { font-weight: 700; }

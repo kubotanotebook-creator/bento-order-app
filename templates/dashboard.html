@@ -133,13 +133,15 @@
     {# 冊をまたいで持っている人は10枚を超えることがあるので、分母は出さない #}
     <div class="stat"><span class="stat-label">残り</span><span class="stat-value">{{ ticket_status.remaining }}枚</span></div>
   </div>
+  {% if today_ticket_state == 'not_yet' %}
+  <p class="today-ticket-state is-pending">今日の分は<strong>まだ引かれていません</strong>({{ auto_collect_time }}に反映されます)</p>
+  {% elif today_ticket_state == 'counted' %}
+  <p class="today-ticket-state is-done">今日の分は<strong>反映済み</strong>です</p>
+  {% endif %}
   <p class="muted" style="margin-bottom:0;">最後にもらった日: {{ ticket_status.issued_at }}</p>
   <p class="muted" style="margin-bottom:0;">お弁当を受け取った日のぶんだけ減ります(その日の{{ auto_collect_time }}以降に反映)。休んだ日は減りません。</p>
   {% if ticket_status.uncollected %}
   <p class="notice" style="margin-top:8px; margin-bottom:0;">チケットをお渡しできていない日が{{ ticket_status.uncollected }}日あります。松浦さん・陽介さんにチケットを渡してください(渡すまで残り枚数は減りません)。</p>
-  {% endif %}
-  {% if ticket_status.pending %}
-  <p class="notice" style="margin-top:8px; margin-bottom:0;">本日受け取った{{ ticket_status.pending }}食分は、この後で残り枚数に反映されます。</p>
   {% endif %}
   {% if ticket_status.shortage %}
   <p class="notice" style="margin-top:8px; margin-bottom:0;">受け渡しの記録が{{ ticket_status.shortage }}枚分足りていないようです。実際の残り枚数と合わない場合は、松浦さんか陽介さんにお伝えください。</p>

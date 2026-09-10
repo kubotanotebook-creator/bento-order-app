@@ -108,9 +108,11 @@ SAME_DAY_CANCEL_CUTOFF = time(9, 0)
 # 以前は管理者が全員分に手でチェックを付けていたが、ほぼ毎日全員から回収
 # できるのに人数分クリックするのは負担が大きすぎた(一括ボタンの要望が出た
 # のがきっかけ)。既定を回収済みにして、渡してもらえなかった人だけを
-# 「未回収」として記録する形にしている。昼を十分に過ぎた時刻にしてあるのは、
-# 渡し漏れがあればその時点で分かっているため。
-TICKET_AUTO_COLLECT_TIME = time(16, 0)
+# 「未回収」として記録する形にしている。時刻は昼休みが全員終わる13:30。
+# 以前は16:00だったが、券を渡してから反映されるまでの間、本人の手元より
+# 多い枚数が表示されてしまうため、手元と揃う時刻へ寄せた。渡し漏れは夕方に
+# 分かるので、そのときに「未回収」にすれば残枚数は戻る。
+TICKET_AUTO_COLLECT_TIME = time(13, 30)
 
 # Links to the how-to manual, shown as a card on the employee dashboard and
 # in the admin nav. An admin can upload a PDF straight from the admin screen
@@ -1193,6 +1195,22 @@ def index():
 
     ticket_status = employee_ticket_status(db, employee_name, today)
 
+    # 「今日の分はもう引かれているのか」を数字の横で答える。今日の注文がある
+    # 人だけ対象。自動反映の時刻を覚えていなくても、見た瞬間に分かるように。
+    today_order = db.execute(
+        "SELECT paid, uncollected FROM orders WHERE employee_name = ? AND order_date = ? "
+        "AND status = 'ordered' LIMIT 1",
+        (employee_name, today.isoformat()),
+    ).fetchone()
+    if today_order is None:
+        today_ticket_state = None
+    elif today_order["uncollected"]:
+        today_ticket_state = "uncollected"
+    elif today_order["paid"]:
+        today_ticket_state = "counted"
+    else:
+        today_ticket_state = "not_yet"
+
     # This payroll cycle's deduction: one ¥3,000 charge per booklet handed
     # out within the cycle (billed on handout date, not on ticket use — see
     # payroll_cycle()'s docstring), from the 受け渡し記録 table itself.
@@ -1291,6 +1309,7 @@ def index():
         next_week_status=next_week_status,
         next_week_days=next_week_days,
         ticket_status=ticket_status,
+        today_ticket_state=today_ticket_state,
         cycle_summary=cycle_summary,
         past_cycle_summaries=past_cycle_summaries,
         recent_orders=recent_orders,
@@ -2459,6 +2478,18 @@ def run_due_daily_jobs():
         return
 
     now = now_jst()
+
+    # 時刻を過ぎた分のチケット回収を既定で済みにする。5分の間引きより前に
+    # 置いてあるのは、13:27に誰かが開いた直後の13:31に別の人が開くと、
+    # 間引かれて13:30前の枚数が見えてしまうため。対象の行がなければ何も
+    # 更新しない1本のSQLなので、毎回走らせても重くならない。
+    try:
+        db = get_db()
+        if auto_mark_collected(db):
+            db.commit()
+    except Exception as e:
+        print(f"WARNING: チケットの自動回収でエラーが発生しました: {e}", file=sys.stderr)
+
     if _last_job_check and now - _last_job_check < JOB_CHECK_INTERVAL:
         return
     _last_job_check = now
@@ -2466,10 +2497,6 @@ def run_due_daily_jobs():
     today_str = now.date().isoformat()
     try:
         db = get_db()
-        # 時刻を過ぎた分のチケット回収を既定で済みにする。1日1回ではなく
-        # 毎回確認するのは、朝に走ってしまうと当日分が対象外のままになるため。
-        if auto_mark_collected(db):
-            db.commit()
         if claim_job(db, "backup", today_str):
             db.commit()
             try:
