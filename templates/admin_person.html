@@ -64,7 +64,7 @@
           {% elif e.state == 'requested' %}<span class="badge closed">希望(未承認)</span>
           {% else %}<span class="badge">回収待ち</span>{% endif %}
         </td>
-        <td data-label="内容">
+        <td data-label="内容" class="wrap">
           {% if e.kind == 'meal' %}
             {{ e.item }}
             {% if e.created_by == 'admin' %}<span class="muted">(代理)</span>{% endif %}

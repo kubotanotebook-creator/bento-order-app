@@ -2141,8 +2141,19 @@ def admin_dashboard():
     # the wrong person (e.g. a typo, or picking the wrong "田中"), and
     # showing remaining counts right in the list makes it obvious who's
     # actually run out and needs a new booklet.
+    # 同じ status を、受け渡し記録フォームのプルダウンと「全員の残枚数」一覧の
+    # 両方で使う。人数ぶんクエリが走るので、二度は回さない。
+    # 一覧の対象は known_employees(注文したことがある人)より広く取る。
+    # チケットを渡したのにまだ一度も注文していない人が漏れると、その人の
+    # 残枚数が合計に入らず、廃止時の払い戻し額もずれてしまう。
+    ticket_overview_names = sorted(set(known_employees) | {
+        r["employee_name"]
+        for r in db.execute("SELECT DISTINCT employee_name FROM ticket_issuances").fetchall()
+    })
+
     ticket_dropdown_options = []
-    for name in known_employees:
+    ticket_overview = []
+    for name in ticket_overview_names:
         status = employee_ticket_status(db, name, today)
         if status["known"]:
             # 記録が足りていない人は、渡す前に記録を直したいので一覧で分かるようにする。
@@ -2155,9 +2166,64 @@ def admin_dashboard():
             label = f"{name}(受け渡し記録なし)"
             out_of_tickets = True
         ticket_dropdown_options.append({"name": name, "label": label, "out_of_tickets": out_of_tickets})
-    # Whoever's out of tickets (or has no record at all) is the one an admin
-    # actually needs to find in this list, so surface them first.
+
+        # 一覧の並びは「動く必要がある人が上」。残0(と記録なし)、次に残り少、
+        # あとは残枚数の少ない順。同数なら記録が足りていない人を先に出す。
+        if not status["known"]:
+            level = "unknown"
+        elif status["shortage"]:
+            level = "shortage"
+        elif status["remaining"] <= 0:
+            level = "empty"
+        elif status["remaining"] <= 2:
+            level = "low"
+        else:
+            level = "ok"
+        # 日付は他の集計表と同じ「8/26」の書き方に揃える。
+        last_issued = status.get("issued_at")
+        last_issued_label = None
+        if last_issued:
+            d = date.fromisoformat(last_issued)
+            last_issued_label = f"{d.month}/{d.day}"
+        ticket_overview.append({
+            "name": name,
+            "known": status["known"],
+            "remaining": status.get("remaining", 0),
+            "shortage": status.get("shortage", 0),
+            "pending": status.get("pending", 0),
+            "uncollected": status.get("uncollected", 0),
+            "last_issued": last_issued_label,
+            "level": level,
+        })
     ticket_dropdown_options.sort(key=lambda o: not o["out_of_tickets"])
+    ticket_overview.sort(key=lambda r: (
+        r["remaining"] if r["known"] else -1,
+        0 if r["level"] in ("shortage", "unknown") else 1,
+        r["name"],
+    ))
+
+    # 一覧の見出しに出すまとめ。残枚数の合計は、チケットを廃止するときに
+    # 「返金するならいくらか」の目安にもなるので、金額も一緒に出しておく。
+    ticket_overview_summary = {
+        "total": len(ticket_overview),
+        "attention": sum(1 for r in ticket_overview if r["level"] in ("shortage", "empty", "unknown")),
+        "low": sum(1 for r in ticket_overview if r["level"] == "low"),
+        "ok": sum(1 for r in ticket_overview if r["level"] == "ok"),
+        "total_remaining": sum(r["remaining"] for r in ticket_overview if r["known"]),
+    }
+    ticket_overview_summary["refund_estimate"] = (
+        ticket_overview_summary["total_remaining"] * settings["price"])
+
+    # 受け渡し記録を保存する前に「その人・その日はすでに登録済み」と気づける
+    # ようにするための一覧。二度押しだけでなく「昨日入れたのを忘れて今日また
+    # 入れる」も止まるよう、直近90日ぶんを渡す。
+    ticket_issue_dates = {}
+    for r in db.execute(
+        "SELECT employee_name, issued_at FROM ticket_issuances "
+        "WHERE kind = 'issue' AND issued_at >= ?",
+        ((today - timedelta(days=90)).isoformat(),),
+    ).fetchall():
+        ticket_issue_dates.setdefault(r["employee_name"], []).append(r["issued_at"])
 
     weekday_labels = list(enumerate(WEEKDAY_JP))
 
@@ -2279,6 +2345,9 @@ def admin_dashboard():
         registered_employees=registered_employees,
         opening_issuances=opening_issuances,
         ticket_dropdown_options=ticket_dropdown_options,
+        ticket_overview=ticket_overview,
+        ticket_overview_summary=ticket_overview_summary,
+        ticket_issue_dates=ticket_issue_dates,
         payroll_deduction_cycles=payroll_deduction_cycles,
         proxy_menu_map=proxy_menu_map,
         weekday_labels=weekday_labels,
@@ -2494,7 +2563,9 @@ def admin_person():
             "sort": (o["order_date"], 1, o["id"]),
             "kind": "meal",
             "state": state,
-            "item": item_display_name(o["category"], o["dish_name"]) if o["category"] else "(メニュー削除済み)",
+            # 区分だけを出す。献立名まで入れると行が長くなり、右端の残枚数が
+            # 画面の外へ押し出されてしまう(この表で見たいのは残枚数の動き)。
+            "item": CATEGORY_LABELS.get(o["category"], "(メニュー削除済み)"),
             "created_by": o["created_by"],
             "contacted": o["contacted"],
         })
@@ -3097,7 +3168,22 @@ def admin_issue_tickets():
         (name, issued_at, now_jst().isoformat()),
     )
     db.commit()
-    flash(f"{name} さんに{issued_at}付でチケット10枚を渡した記録を保存しました。", "success")
+    # 同じ人・同じ日に2件目以降が入ったときは知らせる。1日に2冊渡すことは
+    # 実際にあるので止めはしないが、二度押しだと天引きが3,000円増えてしまう。
+    same_day = db.execute(
+        "SELECT COUNT(*) FROM ticket_issuances "
+        "WHERE employee_name = ? AND issued_at = ? AND kind = 'issue'",
+        (name, issued_at),
+    ).fetchone()[0]
+    if same_day > 1:
+        flash(
+            f"{name} さんに{issued_at}付でチケット10枚を渡した記録を保存しました。"
+            f"この日はこれで{same_day}件目です(天引きは{same_day}冊ぶんになります)。"
+            "押し間違いなら、上の「月ごとの天引き集計」にある日付の「✕」から取り消してください。",
+            "warning",
+        )
+    else:
+        flash(f"{name} さんに{issued_at}付でチケット10枚を渡した記録を保存しました。", "success")
     return redirect(url_for("admin_dashboard"))
 
 

@@ -41,15 +41,64 @@
   })();
   </script>
   {% endif %}
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
-        <div class="flash flash-{{ category }}">{{ message }}</div>
-      {% endfor %}
-    {% endif %}
-  {% endwith %}
   {% block content %}{% endblock %}
 </main>
+
+{# 完了メッセージは画面の上に浮かせる。以前はページの先頭に差し込んでいたため、
+   ボタンを押すたびに内容が下へずれ、作業していた場所を見失いやすかった。
+   成功は数秒で消し、確認が必要なもの(エラー・注意)は自分で閉じるまで残す。 #}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="toast-stack">
+    {% for category, message in messages %}
+    <div class="flash flash-{{ category }}"
+         role="{{ 'status' if category == 'success' else 'alert' }}"
+         {% if category == 'success' %}data-autohide="4000"{% endif %}>
+      <span class="flash-text">{{ message }}</span>
+      <button type="button" class="flash-close" aria-label="閉じる">×</button>
+    </div>
+    {% endfor %}
+  </div>
+  <script>
+  (function () {
+    // 画面の上にはヘッダーや「未対応の希望があります」の帯が出ることがある。
+    // それらの下に来るように、今どこまで塞がっているかを測って置き直す。
+    var stack = document.querySelector('.toast-stack');
+    function place() {
+      var top = 12;
+      document.querySelectorAll('.topbar, .attention-bar').forEach(function (el) {
+        if (el.hidden || !el.offsetHeight) return;
+        var bottom = el.getBoundingClientRect().bottom + 8;
+        if (bottom > top) top = Math.min(bottom, 170);
+      });
+      stack.style.top = top + 'px';
+    }
+    place();
+    var pending = false;
+    window.addEventListener('scroll', function () {
+      if (pending) return;
+      pending = true;
+      window.requestAnimationFrame(function () { place(); pending = false; });
+    }, { passive: true });
+
+    document.querySelectorAll('.toast-stack .flash').forEach(function (el) {
+      function dismiss() {
+        el.classList.add('is-leaving');
+        setTimeout(function () { el.remove(); }, 200);
+      }
+      el.querySelector('.flash-close').addEventListener('click', dismiss);
+      var ms = parseInt(el.dataset.autohide || '0', 10);
+      if (!ms) return;
+      var timer = setTimeout(dismiss, ms);
+      // 読んでいる最中に消えないよう、指やマウスが乗っている間は止める。
+      ['mouseenter', 'touchstart', 'focusin'].forEach(function (ev) {
+        el.addEventListener(ev, function () { clearTimeout(timer); });
+      });
+    });
+  })();
+  </script>
+  {% endif %}
+{% endwith %}
 
 <div id="confirm-request-modal" class="confirm-modal-backdrop" hidden>
   <div class="confirm-modal">
@@ -122,6 +171,41 @@
       btn.setAttribute('aria-pressed', shown ? 'false' : 'true');
       btn.setAttribute('aria-label', shown ? '入力内容を表示する' : '入力内容を隠す');
       input.focus();
+    });
+  });
+})();
+</script>
+
+<script>
+(function () {
+  // 二度押し防止。保存ボタンを押したあと画面が切り替わるまでの間に
+  // もう一度押せてしまうと、記録が2件できてしまうものがある
+  // (チケットの受け渡し記録は、そのぶん天引きが増えてしまう)。
+  document.addEventListener('submit', function (e) {
+    // 確認ダイアログで「やめる」を押した場合はここで止める。押せないまま
+    // になってしまうため。
+    if (e.defaultPrevented) return;
+    var form = e.target;
+    if (!form || form.target === '_blank') return;
+    var btn = e.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
+    if (!btn || btn.dataset.busy) return;
+    btn.dataset.busy = '1';
+    btn.dataset.label = btn.tagName === 'INPUT' ? btn.value : btn.innerHTML;
+    // すぐ disabled にすると、そのボタンの値が送信されないブラウザがある。
+    // 送信内容が組み立てられたあと(次の処理順)で無効にする。
+    setTimeout(function () {
+      btn.disabled = true;
+      if (btn.tagName === 'INPUT') { btn.value = '保存中…'; } else { btn.textContent = '保存中…'; }
+    }, 0);
+  }, false);
+
+  // 「戻る」で戻ってきたときは、押せないままにしない。
+  window.addEventListener('pageshow', function (e) {
+    if (!e.persisted) return;
+    document.querySelectorAll('[data-busy]').forEach(function (btn) {
+      btn.disabled = false;
+      if (btn.tagName === 'INPUT') { btn.value = btn.dataset.label; } else { btn.innerHTML = btn.dataset.label; }
+      delete btn.dataset.busy;
     });
   });
 })();

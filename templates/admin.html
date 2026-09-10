@@ -280,6 +280,46 @@
 
 <div class="tab-panel" data-tab="tickets">
   <div class="card">
+    <h1>全員の残枚数</h1>
+    <p class="muted">誰にチケットを渡す必要があるかを、この表だけで確認できます。残りが少ない人から順に並びます。<strong>氏名をクリック</strong>すると、その人の受け渡し・食べた日・残枚数の動きを時系列で確認できます(残枚数が実際と合わないときの調査用)。</p>
+    <div class="summary-row">
+      <div class="stat"><span class="stat-label">対象</span><span class="stat-value">{{ ticket_overview_summary.total }}名</span></div>
+      <div class="stat"><span class="stat-label">残0・要確認</span><span class="stat-value">{{ ticket_overview_summary.attention }}名</span></div>
+      <div class="stat"><span class="stat-label">残り1〜2枚</span><span class="stat-value">{{ ticket_overview_summary.low }}名</span></div>
+      <div class="stat"><span class="stat-label">残枚数の合計</span><span class="stat-value">{{ ticket_overview_summary.total_remaining }}枚</span></div>
+    </div>
+    <p class="muted" style="margin:8px 0 0;">全員の残枚数を合計すると{{ ticket_overview_summary.total_remaining }}枚(¥{{ '{:,}'.format(ticket_overview_summary.refund_estimate) }}分)です。チケットをやめるときに全員へ払い戻す場合の目安になります。</p>
+    {% if ticket_overview %}
+    <div class="table-scroll table-scroll-grid" style="margin-top:14px;">
+    <table class="table table-keep-grid ticket-overview">
+      <thead><tr><th>氏名</th><th class="num">残枚数</th><th>状態</th><th>最後に渡した日</th></tr></thead>
+      <tbody>
+        {% for r in ticket_overview %}
+        <tr{% if r.level in ('shortage', 'empty', 'unknown') %} class="row-issue"{% endif %}>
+          <td data-label="氏名"><a href="{{ url_for('admin_person', name=r.name) }}" target="_blank">{{ r.name }}</a></td>
+          <td data-label="残枚数" class="num">{% if r.known %}<strong>{{ r.remaining }}枚</strong>{% else %}—{% endif %}</td>
+          <td data-label="状態">
+            {% if not r.known %}<span class="badge closed">受け渡し記録なし</span>
+            {% elif r.shortage %}<span class="badge closed">記録が{{ r.shortage }}枚分不足</span>
+            {% elif r.remaining <= 0 %}<span class="badge closed">要受け渡し</span>
+            {% elif r.remaining <= 2 %}<span class="badge">まもなく0</span>
+            {% endif %}
+            {% if r.pending %}<span class="muted">・回収待ち{{ r.pending }}食</span>{% endif %}
+            {% if r.uncollected %}<span class="muted">・渡せていない日{{ r.uncollected }}件</span>{% endif %}
+          </td>
+          <td data-label="最後に渡した日">{% if r.last_issued %}{{ r.last_issued }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="muted" style="margin:10px 0 0;">「回収待ち」は、注文はあるがまだチケットを回収していない食事です。当日ぶんは{{ auto_collect_time }}を過ぎると自動で回収済みになるため、残枚数にはまだ入っていません。</p>
+    {% else %}
+    <p class="muted">社員が登録されていません。</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
     <h1>月ごとの天引き集計(給与処理用)</h1>
     <p class="muted">給与締め(16日〜翌15日)ごとに、社員別の受け渡し冊数と天引き額をまとめています。給与処理の際にご利用ください。</p>
     {% if payroll_deduction_cycles %}
@@ -329,7 +369,7 @@
     <h1>チケット受け渡し記録</h1>
     <p class="muted">紙の「チケット受け渡し表」と同じ内容をここにも記録しておくと、社員のダッシュボードに正確な残り枚数・天引き予定額が表示されます。10枚使い切った人に、10枚渡すたびに1件記録してください。取り違え防止のため一覧から選ぶのがおすすめです(受け渡し記録がない・残り0枚の人を上に表示しています)が、まだ注文したことがない人の分は直接入力もできます。</p>
     <p class="muted">登録した記録は、上の「月ごとの天引き集計」の氏名の横に日付として表示されます。間違えて登録したときは、そこの日付の「✕」から取り消せます。</p>
-    <form method="post" action="{{ url_for('admin_issue_tickets') }}" class="grid-form">
+    <form method="post" action="{{ url_for('admin_issue_tickets') }}" class="grid-form" id="ticket-issue-form">
       <label>氏名
         <input type="text" name="employee_name" list="ticket-employee-list" placeholder="例: 山田 太郎" required>
         <datalist id="ticket-employee-list">
@@ -339,20 +379,24 @@
       <label>渡した日<input type="date" name="issued_at" value="{{ today }}" required></label>
       <button type="submit" class="btn primary">10枚渡した記録を保存</button>
     </form>
-  </div>
-
-  <div class="card">
-    <h1>個人の記録を調べる</h1>
-    <p class="muted">残枚数が実際と合わないときに使います。その人の受け渡し・食べた日・残枚数の動きを時系列で確認できます。</p>
-    <form method="get" action="{{ url_for('admin_person') }}" class="inline-form" target="_blank">
-      <label style="margin-bottom:0;">氏名
-        <select name="name">
-          <option value="">選択してください</option>
-          {% for opt in ticket_dropdown_options %}<option value="{{ opt.name }}">{{ opt.name }}</option>{% endfor %}
-        </select>
-      </label>
-      <button type="submit" class="btn">記録を見る</button>
-    </form>
+    <script>
+    (function () {
+      // 同じ人・同じ日の記録が既にあれば確認する。1日に2冊渡すこともあるので
+      // 禁止はしない。ここを素通りしても、保存後にもう一度知らせる。
+      var form = document.getElementById('ticket-issue-form');
+      var known = {{ ticket_issue_dates|tojson }};
+      form.addEventListener('submit', function (e) {
+        var name = (form.employee_name.value || '').trim();
+        var day = form.issued_at.value;
+        var dates = known[name] || [];
+        var count = dates.filter(function (d) { return d === day; }).length;
+        if (!count) return;
+        var msg = name + ' さんは ' + day + ' に、すでに受け渡しの記録が' + count + '件あります。\n\n'
+          + 'もう1件（10枚）追加すると、天引きが' + (count + 1) + '冊ぶんになります。\n追加しますか？';
+        if (!window.confirm(msg)) e.preventDefault();
+      });
+    })();
+    </script>
   </div>
 
   <div class="card">
@@ -1007,7 +1051,48 @@
     b.addEventListener('click', function () { activate(b.dataset.tab); });
   });
 
-  activate(buttons[0].dataset.tab);
+  // 記録を保存すると、画面を読み直すためタブが先頭に戻り、スクロールも
+  // 一番上へ飛んでしまっていた。送信の直前に居場所を控えておき、戻って
+  // きたときに復元する。控えるのは送信したときだけなので、普通に管理画面
+  // を開いたときは今までどおり先頭のタブから始まる。
+  var RETURN_KEY = 'bento_admin_return';
+
+  function remember() {
+    var active = document.querySelector('.tab-btn.active');
+    try {
+      sessionStorage.setItem(RETURN_KEY, JSON.stringify({
+        tab: active ? active.dataset.tab : null,
+        y: window.scrollY || window.pageYOffset || 0,
+        at: Date.now()
+      }));
+    } catch (err) { /* 保存できない設定でも動作は変わらない */ }
+  }
+
+  document.addEventListener('submit', function (e) {
+    // 別タブで開くフォーム(印刷など)はこの画面を離れないので対象外。
+    if (e.target && e.target.target === '_blank') return;
+    remember();
+  }, true);
+
+  var saved = null;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(RETURN_KEY) || 'null');
+    sessionStorage.removeItem(RETURN_KEY);
+  } catch (err) { saved = null; }
+  // 確認ダイアログで「やめる」を押した場合など、送信されずに残った控えを
+  // あとから拾わないよう、直後の読み込みだけを対象にする。
+  if (saved && (!saved.at || Date.now() - saved.at > 30000)) saved = null;
+
+  var startTab = buttons[0].dataset.tab;
+  if (saved && saved.tab && document.querySelector('.tab-panel[data-tab="' + saved.tab + '"]')) {
+    startTab = saved.tab;
+  }
+  activate(startTab);
+
+  if (saved && saved.y) {
+    // タブを開いたあとでないと高さが決まらないので、描画の直後に戻す。
+    window.requestAnimationFrame(function () { window.scrollTo(0, saved.y); });
+  }
 })();
 </script>
 

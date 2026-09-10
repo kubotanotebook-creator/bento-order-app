@@ -331,6 +331,9 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
   .table.table-keep-grid { font-size: 0.82rem; }
   .table.table-keep-grid th,
   .table.table-keep-grid td { padding: 7px 6px; white-space: nowrap; }
+  /* 説明文が入る欄だけは折り返す。1行に伸ばすと、その右にある列
+     (個人の記録なら残枚数)が画面の外へ押し出されてしまうため。 */
+  .table.table-keep-grid td.wrap { white-space: normal; }
 }
 
 .week-card .day-row {
@@ -571,6 +574,9 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .payroll-headline .summary-row { margin: 6px 0 0; }
 .payroll-amount { color: #b23b0c; }
 .payroll-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* 全員の残枚数一覧。枚数を縦に見比べるので、桁をそろえて右寄せにする。 */
+.ticket-overview .num { text-align: right; font-variant-numeric: tabular-nums; }
+.ticket-overview td:first-child a { font-weight: 700; }
 /* 受け渡し日を氏名の右に添える(印刷画面と同じ形)。1締めあたり
    多くても2回なので、氏名と同じ行に収まる。 */
 .issued-dates { margin-left: 8px; font-size: 0.78rem; color: #777; font-weight: normal; }
@@ -620,9 +626,54 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 .day-choices-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 4px; }
 .day-col-label { font-size: 0.8rem; color: #666; margin-bottom: 4px; font-weight: 600; }
 
+/* 完了メッセージ。画面の上に浮かせて、ページの内容を押し下げないようにする
+   (押し下げると、ボタンを押すたびに見ていた場所がずれてしまう)。 */
+.toast-stack {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  width: min(560px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast-stack .flash {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+  border-radius: 8px;
+  animation: toast-in 0.18s ease-out;
+}
+.toast-stack .flash.is-leaving { opacity: 0; transition: opacity 0.2s ease; }
+.flash-text { flex: 1; }
+.flash-close {
+  flex: none;
+  border: none;
+  background: none;
+  padding: 0 2px;
+  margin: -2px -4px 0 0;
+  font-size: 1.1rem;
+  line-height: 1.2;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+}
+.flash-close:hover { opacity: 1; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .toast-stack .flash { animation: none; }
+  .toast-stack .flash.is-leaving { transition: none; }
+}
+
 .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 0.9rem; }
-.flash-success { background: #e6f4ea; color: #1a7f37; }
-.flash-error { background: #fbe9e7; color: #c62828; }
+.flash-success { background: #e6f4ea; color: #1a7f37; border: 1px solid #a8d8b9; }
+.flash-error { background: #fbe9e7; color: #c62828; border: 1px solid #f0b4ae; }
 .flash-warning { background: #fff4e0; color: #8a5a00; border: 1px solid #f0c869; }
 
 .is-cancelled { text-decoration: line-through; color: #aaa; }
